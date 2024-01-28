@@ -4,6 +4,7 @@ import "core:unicode/utf8"
 import "core:strconv"
 import "core:strings"
 import "core:intrinsics"
+import "core:reflect"
 
 Unary_Op :: enum {
 
@@ -259,9 +260,9 @@ parser_match_string_escape :: proc(p: ^Parser) -> rune {
     } else if parser_char_match(p, 'v') {
         return '\v'
     } else if parser_char_match(p, 'u') {
-        // TODO
+        lexing_error(p, "\\u String escapes not supported yet")
     } else if parser_char_match(p, 'x') {
-        // TODO
+        lexing_error(p, "\\x String escapes not supported yet")
     }
     return 0
 }
@@ -281,7 +282,7 @@ parser_token_next :: proc(p: ^Parser) {
     }
     t := Token {
         loc = Loc {
-            offs = p.idx,
+            offs = p.idx-1,
         },
     }
     if parser_char_is_range(p, 'a', 'z') || parser_char_is_range(p, 'A', 'Z') || parser_char_is(p, '_') {
@@ -294,7 +295,7 @@ parser_token_next :: proc(p: ^Parser) {
             parser_char_next(p)
         }
         t.un = Identifier {
-            name = p.text[t.loc.offs-1:p.idx-1],
+            name = p.text[t.loc.offs:p.idx-1],
         }
     } else if parser_char_is_range(p, '0', '9') {
         for parser_char_is_range(p, '0', '9') ||
@@ -302,10 +303,10 @@ parser_token_next :: proc(p: ^Parser) {
         {
             parser_char_next(p)
         }
-        num_str := p.text[t.loc.offs-1:p.idx-1]
+        num_str := p.text[t.loc.offs:p.idx-1]
         value, ok := strconv.parse_i64(num_str, 10)
         if !ok {
-            panic("bad number")
+            lexing_errorf(p, "Unable to parse the number: %s",  num_str)
         }
         t.un = Lit_Int {
             value = value,
@@ -319,7 +320,7 @@ parser_token_next :: proc(p: ^Parser) {
                 if escaped != 0 {
                     strings.write_rune(&str, escaped)
                 } else {
-                    panic("Bad string escape")
+                    lexing_errorf(p, "\\%c is not a valid escape sequence", p.last_ch)
                 }
             } else {
                 strings.write_rune(&str, p.last_ch)
@@ -327,7 +328,7 @@ parser_token_next :: proc(p: ^Parser) {
             parser_char_next(p)
         }
         if parser_char_is(p, 0) {
-            panic("Unterminated string literal")
+            lexing_errorf(p, "Tempalte literal unterminated")
         }
         ok := parser_char_match(p, '"')
         assert(ok)
@@ -343,7 +344,7 @@ parser_token_next :: proc(p: ^Parser) {
                 if escaped != 0 {
                     strings.write_rune(&str, escaped)
                 } else {
-                    panic("Bad string escape")
+                    lexing_errorf(p, "\\%c is not a valid escape sequence", p.last_ch)
                 }
             } else {
                 strings.write_rune(&str, p.last_ch)
@@ -351,7 +352,7 @@ parser_token_next :: proc(p: ^Parser) {
             }
         }
         if parser_char_is(p, 0) {
-            panic("Unterminated string literal")
+            lexing_errorf(p, "String literal unterminated")
         }
         ok := parser_char_match(p, '\'')
         assert(ok)
@@ -411,12 +412,13 @@ parser_token_next :: proc(p: ^Parser) {
     } else if parser_char_is(p, 0) {
         t.un = nil
     } else {
-        panic("Char doesn't start a token")
+        lexing_errorf(p, "Character '%c' doesn't start a token", p.last_ch)
     }
     t.loc.width = p.idx - t.loc.offs
     p.token = t
 }
 
+@(require_results)
 parser_token_is :: proc(p: ^Parser, $T: typeid) -> (T, bool) {
     if v, ok := p.token.un.(T); ok {
         return v, true
@@ -424,6 +426,7 @@ parser_token_is :: proc(p: ^Parser, $T: typeid) -> (T, bool) {
     return {}, false
 }
 
+@(require_results)
 parser_token_match :: proc(p: ^Parser, $T: typeid) -> bool {
     if p.token.un.(T) {
         parser_token_next(p)
@@ -432,6 +435,15 @@ parser_token_match :: proc(p: ^Parser, $T: typeid) -> bool {
     return false
 }
 
+parser_token_expect :: proc(p: ^Parser, $T: typeid) -> T {
+    if t, ok  := p.token.un.(T); ok {
+        parser_token_next(p)
+        return t
+    }
+    parse_errorf(p, p.token.loc, "Expected token %v, got %v", typeid_of(T), reflect.union_variant_typeid(p.token.un))
+}
+
+@(require_results)
 parser_op_is :: proc(p: ^Parser, op: Token_Operator) -> bool {
     if tok, ok := p.token.un.(Token_Operator); ok {
         if tok == op {
@@ -441,6 +453,7 @@ parser_op_is :: proc(p: ^Parser, op: Token_Operator) -> bool {
     return false
 }
 
+@(require_results)
 parser_op_match :: proc(p: ^Parser, op: Token_Operator) -> bool {
     if tok, ok := p.token.un.(Token_Operator); ok {
         if tok == op {
@@ -449,6 +462,16 @@ parser_op_match :: proc(p: ^Parser, op: Token_Operator) -> bool {
         }
     }
     return false
+}
+
+parser_op_expect :: proc(p: ^Parser, op: Token_Operator) {
+    if tok, ok := p.token.un.(Token_Operator); ok {
+        if tok == op {
+            parser_token_next(p)
+            return
+        }
+    }
+    parse_errorf(p, p.token.loc, "Expected token: %v, got %v", op, p.token.un)
 }
 
 merge_locs :: proc(locs: ..Loc) -> Loc {
@@ -520,9 +543,7 @@ skip_newline :: proc(p: ^Parser) {
 }
 
 expect_1_skip_newlines :: proc(p: ^Parser) {
-    if !parser_op_is(p, .Ln) {
-        panic("Expected newline")
-    }
+    parser_op_expect(p, .Ln)
     for parser_op_is(p, .Ln) {
         parser_token_next(p)
     }
@@ -539,20 +560,27 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
     } else if ident, ok := parser_token_is(p, Identifier); ok {
         ident_loc := p.token.loc
         parser_token_next(p)
+        lparen_loc := p.token.loc
         if parser_op_match(p, .LParen) {
             skip_newline(p)
             args := make([dynamic]^Expr)
             loc := p.token.loc
+            parse_next_ok := true
             for !parser_op_is(p, .RParen) {
+                if !parse_next_ok {
+                    parse_errorf(p, p.token.loc, "Expected ',' to separate function call arguments")
+                }
                 if p.token.un == nil {
-                    panic("Unterminated lparen")
+                    parse_errorf(p, lparen_loc, "'(' was not terminated by ')'")
                 }
                 append(&args, parse_expr(p))
-                parser_op_match(p, .Comma)
+                if !parser_op_match(p, .Comma) {
+                    parse_next_ok = false
+                }
                 skip_newline(p)
             }
             loc = merge_locs(loc, p.token.loc)
-            parser_op_match(p, .RParen)
+            parser_op_expect(p, .RParen)
             expr = expr_make(loc, Expr_Call {
                 fn = ident,
                 args = args[:],
@@ -561,9 +589,7 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
             loc := p.token.loc
             rhs := parse_expr(p)
             loc = merge_locs(loc, p.token.loc)
-            if !parser_op_match(p, .RBracket) {
-                panic("Expected array subscript")
-            }
+            parser_op_expect(p, .RBracket)
             expr = expr_make(loc, Expr_Binary {
                 op = .Subscript,
                 lhs = expr_make(ident_loc, ident),
@@ -573,29 +599,37 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
             expr = expr_make(ident_loc, ident)
         }
         return expr
-    } else if parser_op_match(p, .LBracket) {
+    } else if parser_op_is(p, .LBracket) {
+        lbracket_loc := p.token.loc
+        parser_op_expect(p, .LBracket)
         skip_newline(p)
         exprs := make([dynamic]^Expr)
         loc := p.token.loc
+        parse_next_ok := true
         for !parser_op_is(p, .RBracket) {
+            if !parse_next_ok {
+                parse_errorf(p, p.token.loc, "Expected ',' to separate values in an array literal")
+            }
             if p.token.un == nil {
-                panic("Unterminated rbracket")
+                parse_errorf(p, lbracket_loc, "'[' is not terminated by ']'")
             }
             append(&exprs, parse_expr(p))
-            parser_op_match(p, .Comma)
+            if !parser_op_match(p, .Comma) {
+                parse_next_ok = false
+            }
             skip_newline(p)
         }
         loc = merge_locs(loc, p.token.loc)
-        parser_op_match(p, .RBracket)
+        parser_op_expect(p, .RBracket)
         return expr_make(loc, Expr_Array{
             exprs = exprs[:],
         })
     } else if parser_op_match(p, .LParen) {
         skip_newline(p)
-        defer parser_op_match(p, .RParen)
+        defer parser_op_expect(p, .RParen)
         return parse_expr(p)
     } else {
-        panic("Expected an expression")
+        parse_errorf(p, p.token.loc, "Token %v is not a valid start of expression", p.token)
     }
     parser_token_next(p)
     return expr
@@ -606,6 +640,7 @@ parse_expr0 :: proc(p: ^Parser) -> ^Expr {
     for parser_op_is(p, .Nvl) {
         t := p.token.un.(Token_Operator)
         parser_token_next(p)
+        skip_newline(p)
         rhs := parse_expr_simple(p)
         lhs = expr_make_binary_op(Binary_Op(.Nvl), lhs, rhs)
     }
@@ -730,7 +765,7 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
                         value = expr,
                     })
                 } else {
-                    panic("No ident")
+                    parse_errorf(p, l, "Expected an identifier after a let declaration")
                 }
             case "var":
                 l := p.token.loc
@@ -748,46 +783,47 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
                         value = expr,
                     })
                 } else {
-                    panic("No ident")
+                    parse_errorf(p, l, "Expected an identifier after a var declaration")
                 }
             case "func":
                 l := p.token.loc
                 parser_token_next(p)
-                if ident, ok := parser_token_is(p, Identifier); ok {
+                ident := parser_token_expect(p, Identifier)
+                lparen_loc := p.token.loc
+                parser_op_expect(p, .LParen)
+                ops := make([dynamic]Func_Param)
+                parse_next_ok := true
+                for !parser_op_match(p, .RParen) {
+                    if !parse_next_ok {
+                        parse_errorf(p, p.token.loc, "Expected ',' to separate function parameter list")
+                    }
+                    if p.token.un == nil {
+                        parse_errorf(p, lparen_loc, "'(' is not terminated by ')'")
+                    }
+                    name: Identifier
+                    loc := p.token.loc
+                    if ident, ok := p.token.un.(Identifier); ok {
+                        name = ident
+                    } else {
+                        parse_errorf(p, p.token.loc, "Parameter name must be an identifier")
+                    }
                     parser_token_next(p)
-                    if !parser_op_match(p, .LParen) {
-                        panic("expected '('")
-                    }
-                    ops := make([dynamic]Func_Param)
-                    for !parser_op_match(p, .RParen) {
-                        if p.token.un == nil {
-                            panic("Unterminated '('")
-                        }
-                        name: Identifier
-                        loc := p.token.loc
-                        if ident, ok := p.token.un.(Identifier); ok {
-                            name = ident
-                        } else {
-                            panic("ident expected")
-                        }
-                        parser_token_next(p)
-                        append(&ops, Func_Param {
-                            loc = loc,
-                            name = name,
-                        })
-                        parser_op_match(p, .Comma)
-                    }
-                    l2 := p.token.loc
-                    body := parse_stmt_block(p)
-                    expect_1_skip_newlines(p)
-                    return stmt_make(merge_locs(l, l2), Stmt_Func {
-                        name = ident,
-                        body = body,
-                        params = ops[:],
+                    append(&ops, Func_Param {
+                        loc = loc,
+                        name = name,
                     })
-                } else {
-                    panic("No ident")
+                    if !parser_op_match(p, .Comma) {
+                        parse_next_ok = false
+                    }
                 }
+                l2 := p.token.loc
+                body := parse_stmt_block(p)
+                expect_1_skip_newlines(p)
+                return stmt_make(merge_locs(l, l2), Stmt_Func {
+                    name = ident,
+                    body = body,
+                    params = ops[:],
+                })
             case "return":
                 loc := p.token.loc
                 parser_token_next(p)
@@ -804,16 +840,19 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
 
 parse_stmt_block :: proc(p: ^Parser) -> ^Stmt {
     assert(parser_op_is(p, .LBrace))
+    lbrace_loc := p.token.loc
     parser_token_next(p)
     skip_newline(p)
     stmts := make([dynamic]^Stmt)
     loc := Maybe(Loc) {}
     for !parser_op_match(p, .RBrace) {
         if p.token.un == nil {
-            panic("Unterminated LBrace")
+            parse_errorf(p, lbrace_loc, "'{' is not terminated by '}'")
         }
         stmt := parse_stmt(p)
-        for parser_op_match(p, .Ln) {}
+        for parser_op_is(p, .Ln) {
+            parser_token_next(p)
+        }
         append(&stmts, stmt)
         if loc == nil {
             loc = stmt.loc

@@ -52,5 +52,5 @@ main :: proc() {
     }
     parser := parser_make(transmute(string) bakefile_bytes)
     stmts := parse_stmts(&parser)
-    exec_stmts(stmts)
+    exec_stmts(transmute(string) bakefile_bytes, stmts)
 }

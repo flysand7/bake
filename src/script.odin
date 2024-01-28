@@ -21,6 +21,7 @@ Env :: struct {
 }
 
 Ctx :: struct {
+    text: string,
     tasks: [dynamic]Recipe,
     global_env: ^Env,
     ret_stack: [dynamic]Value,
@@ -105,9 +106,10 @@ value_to_bool :: proc(value: Value) -> bool {
     }
 }
 
-ctx_make :: proc() -> Ctx {
+ctx_make :: proc(text: string) -> Ctx {
     global_env := env_make(nil)
     return {
+        text,
         make([dynamic]Recipe),
         global_env,
         make([dynamic]Value),
@@ -152,8 +154,8 @@ env_set :: proc(env: ^Env, name: string, value: Value) {
     start_env.scope[name] = value
 }
 
-exec_stmts :: proc(stmts: []^Stmt) {
-    ctx := ctx_make()
+exec_stmts :: proc(text: string, stmts: []^Stmt) {
+    ctx := ctx_make(text)
     env := env_make(nil)
     for stmt in stmts {
         exec_stmt(&ctx, env, stmt)
@@ -196,12 +198,12 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) {
     }
 }
 
-eval_expr :: proc(ctx: ^Ctx, env: ^Env, expr: ^Expr) -> Value {
-    switch expr in expr.un {
+eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
+    switch expr in expression.un {
         case Lit_String:
             return expr.value
         case Lit_Template:
-            return eval_template(env, expr.value)
+            return eval_template(ctx, env, expression.loc, expr.value)
         case Lit_Int:
             return expr.value
         case Identifier:
@@ -209,7 +211,7 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expr: ^Expr) -> Value {
             if value, ok := value.?; ok {
                 return value
             }
-            panic("No value")
+            script_errorf(ctx, expression.loc, "Value %s is not defined in the current scope", expr.name)
         case Expr_Unary:
             switch expr.op {
             }
@@ -222,10 +224,12 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expr: ^Expr) -> Value {
                     after_set := env_get(env, ident.name)
                     return nil
                 } else {
-                    panic("Assign to non-expr")
+                    script_errorf(ctx, expression.loc, "Can only assign to plain variables")
                 }
             }
-            return eval_binary_op(expr.op, eval_expr(ctx, env, expr.lhs), eval_expr(ctx, env, expr.rhs))
+            lhs := eval_expr(ctx, env, expr.lhs)
+            rhs := eval_expr(ctx, env, expr.rhs)
+            return eval_binary_op(ctx, expression.loc, expr.op, lhs, rhs)
         case Expr_Ternary:
             switch expr.op {
             }
@@ -238,9 +242,11 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expr: ^Expr) -> Value {
             mb_val := env_get(env, expr.fn.name)
             func := Stmt_Func{}
             if val, ok := mb_val.?; !ok {
-                panic("No function found to call")
+                script_errorf(ctx, expression.loc, "Value %s is not defined", expr.fn.name)
             } else if fn, ok := val.(Stmt_Func); ok {
-                assert(len(expr.args) == len(fn.params), "Bad arg count")
+                if len(expr.args) != len(fn.params) {
+                    script_errorf(ctx, expression.loc, "Cannot call function with %d arguments. Expected %d arguments", len(expr.args), len(fn.params))
+                }
                 append(&ctx.ret_stack, nil)
                 env := env_make(ctx.global_env)
                 for p, i in fn.params {
@@ -254,7 +260,7 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expr: ^Expr) -> Value {
             } else if fn, ok := val.(Builtin_Func); ok {
                 return fn(ctx, evaluated_args[:])
             } else {
-                panic("Calling a non-function")
+                script_errorf(ctx, expression.loc, "Value %s is not callable")
             }
         case Expr_Array:
             values := make([dynamic]Value)
@@ -267,12 +273,14 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expr: ^Expr) -> Value {
 }
 
 eval_binary_op :: proc(
+    ctx: ^Ctx,
+    op_loc: Loc,
     op: Binary_Op,
     lhs: Value,
     rhs: Value,
 ) -> Value {
     if value_is_any_func(lhs) || value_is_any_func(rhs) {
-        panic("Functions don't support binary operations")
+        script_errorf(ctx, op_loc, "Functions don't support binary operations")
     }
     #partial switch op {
         case .Add:
@@ -290,32 +298,32 @@ eval_binary_op :: proc(
                 lhs_str, lhs_ok := value_to_str(lhs)
                 rhs_str, rhs_ok := value_to_str(rhs)
                 if !lhs_ok || !rhs_ok {
-                    panic("Unable to add values of the provided types")
+                    script_errorf(ctx, op_loc, "Operation '+' does not work for provided types")
                 }
                 return fmt.tprint(lhs_str, rhs_str, sep="")
             }
         case .Div:
             if value_is_int(lhs) && value_is_int(rhs) {
                 if rhs.(i64) == 0 {
-                    panic("Division by zero")
+                    script_errorf(ctx, op_loc, "Division by zero")
                 }
                 return lhs.(i64) / rhs.(i64)
             } else if value_is_str(lhs) && value_is_str(rhs) {
                 return fmt.tprint(lhs.(string), '/', rhs.(string), sep="")
             } else {
-                panic("Divison of bad types")
+                script_errorf(ctx, op_loc, "Operation '/' does not work for provided types")
             }
         case .Sub:
             if value_is_int(lhs) && value_is_int(rhs) {
                 return rhs.(i64) - lhs.(i64)
             } else {
-                panic("Subtraction of bad types")
+                script_errorf(ctx, op_loc, "Operation '->' does not work for provided types")
             }
         case .Mul:
             if value_is_int(lhs) && value_is_int(rhs) {
                 return lhs.(i64) * rhs.(i64)
             } else {
-                panic("Multiplication of bad types")
+                script_errorf(ctx, op_loc, "Operation '*' does not work for provided types")
             }
         case .Eq:
             if !value_is_nil(lhs) && !value_is_nil(rhs) {
@@ -328,7 +336,7 @@ eval_binary_op :: proc(
                         return false
                     }
                     for i in 0 ..< len(lhs_arr) {
-                        eq := eval_binary_op(.Eq, lhs_arr[i], rhs_arr[i])
+                        eq := eval_binary_op(ctx, op_loc, .Eq, lhs_arr[i], rhs_arr[i])
                         if !eq.(bool) {
                             return false
                         }
@@ -340,10 +348,10 @@ eval_binary_op :: proc(
                     if lhs_ok && rhs_ok {
                         return lhs_s == rhs_s
                     } else {
-                        panic("Comparing bad types")
+                        script_errorf(ctx, op_loc, "Operation '==' does not work for provided types")
                     }
                 } else {
-                    panic("Comparing bad types")
+                    script_errorf(ctx, op_loc, "Operation '==' does not work for provided types")
                 }
             } else {
                 return value_is_nil(lhs) == value_is_nil(rhs)
@@ -359,7 +367,7 @@ eval_binary_op :: proc(
                         return true
                     }
                     for i in 0 ..< len(lhs_arr) {
-                        eq := eval_binary_op(.Eq, lhs_arr[i], rhs_arr[i])
+                        eq := eval_binary_op(ctx, op_loc, .Eq, lhs_arr[i], rhs_arr[i])
                         if !eq.(bool) {
                             return true
                         }
@@ -371,10 +379,10 @@ eval_binary_op :: proc(
                     if lhs_ok && rhs_ok {
                         return lhs_s != rhs_s
                     } else {
-                        panic("Comparing bad types")
+                        script_errorf(ctx, op_loc, "Operation '!=' does not work for provided types")
                     }
                 } else {
-                    panic("Comparing bad types")
+                    script_errorf(ctx, op_loc, "Operation '!=' does not work for provided types")
                 }
             } else {
                 return value_is_nil(lhs) != value_is_nil(rhs)
@@ -391,10 +399,10 @@ eval_binary_op :: proc(
                 if lhs_ok && rhs_ok {
                     return lhs_s >= rhs_s
                 } else {
-                    panic("Comparing bad types")
+                    script_errorf(ctx, op_loc, "Operation '>=' does not work for provided types")
                 }
             } else {
-                panic("Comparing bad types")
+                script_errorf(ctx, op_loc, "Operation '>=' does not work for provided types")
             }
         case .Gt:
             if value_is_nil(lhs) || value_is_nil(rhs) {
@@ -408,10 +416,10 @@ eval_binary_op :: proc(
                 if lhs_ok && rhs_ok {
                     return lhs_s > rhs_s
                 } else {
-                    panic("Comparing bad types")
+                    script_errorf(ctx, op_loc, "Operation '>' does not work for provided types")
                 }
             } else {
-                panic("Comparing bad types")
+                script_errorf(ctx, op_loc, "Operation '>' does not work for provided types")
             }
         case .Le:
             if value_is_nil(lhs) || value_is_nil(rhs) {
@@ -425,10 +433,10 @@ eval_binary_op :: proc(
                 if lhs_ok && rhs_ok {
                     return lhs_s <= rhs_s
                 } else {
-                    panic("Comparing bad types")
+                    script_errorf(ctx, op_loc, "Operation '<=' does not work for provided types")
                 }
             } else {
-                panic("Comparing bad types")
+                script_errorf(ctx, op_loc, "Operation '<=' does not work for provided types")
             }
         case .Lt:
             if value_is_nil(lhs) || value_is_nil(rhs) {
@@ -442,10 +450,10 @@ eval_binary_op :: proc(
                 if lhs_ok && rhs_ok {
                     return lhs_s < rhs_s
                 } else {
-                    panic("Comparing bad types")
+                    script_errorf(ctx, op_loc, "Operation '<' does not work for provided types")
                 }
             } else {
-                panic("Comparing bad types")
+                script_errorf(ctx, op_loc, "Operation '<' does not work for provided types")
             }
         case .Nvl:
             if !value_is_nil(lhs) {
@@ -456,18 +464,18 @@ eval_binary_op :: proc(
         case .Subscript:
             arr := lhs.([]Value)
             if !value_is_int(rhs) {
-                panic("Only can subscript arrays with integers")
+                script_errorf(ctx, op_loc, "Attempt to subscript array with non-integer type")
             }
             index := rhs.(i64)
             if index < 0 && auto_cast len(arr) <= index {
-                panic("Out of bounds array access")
+                script_errorf(ctx, op_loc, "Out of bounds array access")
             }
             return arr[index]
     }
     unreachable()
 }
 
-eval_template :: proc(env: ^Env, str: string) -> string {
+eval_template :: proc(ctx: ^Ctx, env: ^Env, loc: Loc, str: string) -> string {
     sb := strings.builder_make()
     for i := 0; i < len(str); {
         if str[i] != '$' {
@@ -489,7 +497,7 @@ eval_template :: proc(env: ^Env, str: string) -> string {
             if val, ok := mb_val.?; ok {
                 val_str, str_ok := value_to_str(val)
                 if !str_ok {
-                    panic("Can't interpolate string")
+                    script_errorf(ctx, loc, "String interpolation parameter cannot be converted to string")
                 }
                 strings.write_string(&sb, val_str)
             }
