@@ -225,6 +225,8 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
 
 eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
     switch expr in expression.un {
+        case Lit_Nil:
+            return nil
         case Lit_String:
             return expr.value
         case Lit_Template:

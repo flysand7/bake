@@ -77,7 +77,10 @@ Expr_Array :: struct {
     exprs: []^Expr,
 }
 
+Lit_Nil :: struct {}
+
 Expr_Un :: union {
+    Lit_Nil,
     Lit_String,
     Lit_Template,
     Lit_Int,
@@ -566,6 +569,13 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
     } else if ident, ok := parser_token_is(p, Identifier); ok {
         ident_loc := p.token.loc
         parser_token_next(p)
+        if ident.name == "true" {
+            return expr_make(ident_loc, Lit_Int{1})
+        } else if ident.name == "false" {
+            return expr_make(ident_loc, Lit_Int{0})
+        } else if ident.name == "nil" {
+            return expr_make(ident_loc, Lit_Nil{})
+        }
         lparen_loc := p.token.loc
         if parser_op_match(p, .LParen) {
             skip_newline(p)

@@ -8,6 +8,23 @@ for i != 10 {
     i = i + 1
 }
 
+func iter(a) {
+    if a > 20 {
+        return nil
+    }
+    return a*2
+}
+
+let i = 0
+for true {
+    let cond = iter(i)
+    if cond == nil {
+        break
+    }
+    print("${cond}\n")
+    i = i + 1
+}
+
 # Recipe for building C files
 func build(input, output) {
     bake-task(
