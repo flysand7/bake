@@ -6,8 +6,6 @@ import "core:reflect"
 
 Builtin_Func :: #type proc (ctx: ^Ctx, args: []Value) -> Value
 
-Value_Nil :: struct{}
-
 Value :: union {
     i64,
     string,
@@ -25,6 +23,7 @@ Env :: struct {
 Ctx :: struct {
     tasks: [dynamic]Recipe,
     global_env: ^Env,
+    ret_stack: [dynamic]Value,
 }
 
 value_is_nil :: proc(v: Value) -> bool {
@@ -111,6 +110,7 @@ ctx_make :: proc() -> Ctx {
     return {
         make([dynamic]Recipe),
         global_env,
+        make([dynamic]Value),
     }
 }
 
@@ -190,6 +190,9 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) {
             for stmt in stmt {
                 exec_stmt(ctx, env, stmt)
             }
+        case Stmt_Return:
+            val := eval_expr(ctx, env, stmt.expr)
+            ctx.ret_stack[len(ctx.ret_stack)-1] = val
     }
 }
 
@@ -233,21 +236,25 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expr: ^Expr) -> Value {
                 append(&evaluated_args, eval_expr(ctx, env, arg))
             }
             mb_val := env_get(env, expr.fn.name)
-            if val, ok := mb_val.?; ok {
-                if fn, ok := val.(Stmt_Func); ok {
-                    assert(len(expr.args) == len(fn.params), "Bad arg count")
-                    env := env_make(ctx.global_env)
-                    for p, i in fn.params {
-                        env_set(env, p.name.name, evaluated_args[i])
-                    }
-                    stmts, stmts_ok := fn.body.un.([]^Stmt)
-                    for stmt in stmts {
-                        exec_stmt(ctx, env, stmt)
-                    }
-                    return nil
-                } else if fn, ok := val.(Builtin_Func); ok {
-                    return fn(ctx, evaluated_args[:])
+            func := Stmt_Func{}
+            if val, ok := mb_val.?; !ok {
+                panic("No function found to call")
+            } else if fn, ok := val.(Stmt_Func); ok {
+                assert(len(expr.args) == len(fn.params), "Bad arg count")
+                append(&ctx.ret_stack, nil)
+                env := env_make(ctx.global_env)
+                for p, i in fn.params {
+                    env_set(env, p.name.name, evaluated_args[i])
                 }
+                stmts, stmts_ok := fn.body.un.([]^Stmt)
+                for stmt in stmts {
+                    exec_stmt(ctx, env, stmt)
+                }
+                return pop(&ctx.ret_stack)
+            } else if fn, ok := val.(Builtin_Func); ok {
+                return fn(ctx, evaluated_args[:])
+            } else {
+                panic("Calling a non-function")
             }
         case Expr_Array:
             values := make([dynamic]Value)

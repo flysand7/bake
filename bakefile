@@ -1,23 +1,18 @@
 
-# Funny general purpose programming
-let i = 0
-let numbers = [1, 2, 3, 4]
-for i < len(numbers) {
-    let n = numbers[i]
-    print("The number #${i} is ${n}", '\n')
-    i = i + 1
-}
-
-func build(compiler) {
+# Recipe for building C files
+func build(input, output) {
     bake-task(
         [
-            [compiler, 'testing/print-args.c'],
+            ['clang.exe', input, '-o', output],
         ],
-        ['testing/print-args.c'],
-        ['a.exe'],
+        [input],
+        [output],
     )
 }
 
-build('clang.exe')
+# Create the recipe
+build('testing/print-args.c', 'a.exe')
+
+# Build and run
 bake-build(['a.exe'])
 cmd('a.exe', 1, 2, 3)

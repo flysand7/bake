@@ -103,6 +103,10 @@ Stmt_If :: struct {
     branch_f: ^Stmt,
 }
 
+Stmt_Return :: struct {
+    expr: ^Expr,
+}
+
 Stmt_For :: struct {
     cond: ^Expr,
     body: ^Stmt,
@@ -131,6 +135,7 @@ Stmt_Un :: union {
     Stmt_If,
     Stmt_For,
     Stmt_Func,
+    Stmt_Return,
     []^Stmt,
 }
 
@@ -783,6 +788,14 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
                 } else {
                     panic("No ident")
                 }
+            case "return":
+                loc := p.token.loc
+                parser_token_next(p)
+                expr := parse_expr(p)
+                expect_1_skip_newlines(p)
+                return stmt_make(merge_locs(loc, expr.loc), Stmt_Return {
+                    expr = expr,
+                })
         }
     }
     expr := parse_expr_toplevel(p)
