@@ -124,7 +124,7 @@ env_make :: proc(parent: ^Env) -> ^Env {
         env_set(env, "print", cast(Builtin_Func) builtin_print)
         env_set(env, "cmd", cast(Builtin_Func) builtin_cmd)
         env_set(env, "len", cast(Builtin_Func) builtin_len)
-        env_set(env, "bake-task", cast(Builtin_Func) builtin_task)
+        env_set(env, "bake-task", cast(Builtin_Func) builtin_recipe)
         env_set(env, "bake-build", cast(Builtin_Func) builtin_build)
     }
     return env

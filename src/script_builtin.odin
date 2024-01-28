@@ -41,7 +41,7 @@ builtin_len :: proc(ctx: ^Ctx, args: []Value) -> Value {
     return nil
 }
 
-builtin_task :: proc(ctx: ^Ctx, args: []Value) -> Value {
+builtin_recipe :: proc(ctx: ^Ctx, args: []Value) -> Value {
     if len(args) != 3 {
         panic("task(cmd, in, out) function takes three arguments")
     }
