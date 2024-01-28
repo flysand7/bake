@@ -671,10 +671,10 @@ parse_expr1 :: proc(p: ^Parser) -> ^Expr {
         skip_newline(p)
         rhs := parse_expr0(p)
         bop := Binary_Op(nil)
-        if t == .Add {
-            bop = .Add
-        } else if t == .Sub {
-            bop = .Sub
+        if t == .Mul {
+            bop = .Mul
+        } else if t == .Div {
+            bop = .Div
         }
         lhs = expr_make_binary_op(bop, lhs, rhs)
     }
