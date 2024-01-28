@@ -480,7 +480,11 @@ eval_template :: proc(env: ^Env, str: string) -> string {
             i += 1
             mb_val := env_get(env, str[start_idx:end_idx])
             if val, ok := mb_val.?; ok {
-                strings.write_string(&sb, fmt.tprint(val))
+                val_str, str_ok := value_to_str(val)
+                if !str_ok {
+                    panic("Can't interpolate string")
+                }
+                strings.write_string(&sb, val_str)
             }
         }
     }

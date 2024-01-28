@@ -1,3 +1,23 @@
 
-print('--------------- BUILD SYSTEM SHIT HERE -----------------------\n')
-cmd('odin.exe', 'build', 'src', '-out:bake.exe', '-o:none', '-debug', '-show-system-calls')
+# Funny general purpose programming
+let i = 0
+let numbers = [1, 2, 3, 4]
+for i < len(numbers) {
+    let n = numbers[i]
+    print("The number #${i} is ${n}", '\n')
+    i = i + 1
+}
+
+func build(compiler) {
+    bake-task(
+        [
+            [compiler, 'testing/print-args.c'],
+        ],
+        ['testing/print-args.c'],
+        ['a.exe'],
+    )
+}
+
+build('clang.exe')
+bake-build(['a.exe'])
+cmd('a.exe', 1, 2, 3)

@@ -312,12 +312,12 @@ parser_token_next :: proc(p: ^Parser) {
             if parser_char_is(p, '\\') {
                 escaped := parser_match_string_escape(p)
                 if escaped != 0 {
-                    strings.write_encoded_rune(&str, escaped, false)
+                    strings.write_rune(&str, escaped)
                 } else {
                     panic("Bad string escape")
                 }
             } else {
-                strings.write_encoded_rune(&str, p.last_ch)
+                strings.write_rune(&str, p.last_ch)
             }
             parser_char_next(p)
         }
