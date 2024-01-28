@@ -108,6 +108,10 @@ Stmt_Return :: struct {
     expr: ^Expr,
 }
 
+Stmt_Break :: struct {}
+
+Stmt_Continue :: struct {}
+
 Stmt_For :: struct {
     cond: ^Expr,
     body: ^Stmt,
@@ -137,6 +141,8 @@ Stmt_Un :: union {
     Stmt_For,
     Stmt_Func,
     Stmt_Return,
+    Stmt_Break,
+    Stmt_Continue,
     []^Stmt,
 }
 
@@ -314,31 +320,10 @@ parser_token_next :: proc(p: ^Parser) {
     } else if parser_char_is(p, '"') {
         str := strings.builder_make()
         parser_char_next(p)
-        for !parser_char_is(p, '"') && !parser_char_is(p, 0) {
-            if parser_char_is(p, '\\') {
-                escaped := parser_match_string_escape(p)
-                if escaped != 0 {
-                    strings.write_rune(&str, escaped)
-                } else {
-                    lexing_errorf(p, "\\%c is not a valid escape sequence", p.last_ch)
-                }
-            } else {
-                strings.write_rune(&str, p.last_ch)
+        for !parser_char_is(p, '"') {
+            if parser_char_is(p, 0) {
+                lexing_errorf(p, "Tempalte literal unterminated")
             }
-            parser_char_next(p)
-        }
-        if parser_char_is(p, 0) {
-            lexing_errorf(p, "Tempalte literal unterminated")
-        }
-        ok := parser_char_match(p, '"')
-        assert(ok)
-        t.un = Lit_Template {
-            value = strings.to_string(str),
-        }
-    } else if parser_char_is(p, '\'') {
-        str := strings.builder_make()
-        parser_char_next(p)
-        for !parser_char_is(p, '\'') && !parser_char_is(p, 0) {
             if parser_char_is(p, '\\') {
                 escaped := parser_match_string_escape(p)
                 if escaped != 0 {
@@ -351,8 +336,29 @@ parser_token_next :: proc(p: ^Parser) {
                 parser_char_next(p)
             }
         }
-        if parser_char_is(p, 0) {
-            lexing_errorf(p, "String literal unterminated")
+        ok := parser_char_match(p, '"')
+        assert(ok)
+        t.un = Lit_Template {
+            value = strings.to_string(str),
+        }
+    } else if parser_char_is(p, '\'') {
+        str := strings.builder_make()
+        parser_char_next(p)
+        for !parser_char_is(p, '\'') {
+            if parser_char_is(p, 0) {
+                lexing_errorf(p, "String literal unterminated")
+            }
+            if parser_char_is(p, '\\') {
+                escaped := parser_match_string_escape(p)
+                if escaped != 0 {
+                    strings.write_rune(&str, escaped)
+                } else {
+                    lexing_errorf(p, "\\%c is not a valid escape sequence", p.last_ch)
+                }
+            } else {
+                strings.write_rune(&str, p.last_ch)
+                parser_char_next(p)
+            }
         }
         ok := parser_char_match(p, '\'')
         assert(ok)
@@ -832,6 +838,14 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
                 return stmt_make(merge_locs(loc, expr.loc), Stmt_Return {
                     expr = expr,
                 })
+            case "break":
+                loc := p.token.loc
+                parser_token_next(p)
+                return stmt_make(loc, Stmt_Break {})
+            case "continue":
+                loc := p.token.loc
+                parser_token_next(p)
+                return stmt_make(loc, Stmt_Continue {})
         }
     }
     expr := parse_expr_toplevel(p)

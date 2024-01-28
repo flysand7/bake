@@ -27,6 +27,13 @@ Ctx :: struct {
     ret_stack: [dynamic]Value,
 }
 
+CF_Token :: enum {
+    None,
+    Break,
+    Continue,
+    Return,
+}
+
 value_is_nil :: proc(v: Value) -> bool {
     return v == nil
 }
@@ -158,11 +165,15 @@ exec_stmts :: proc(text: string, stmts: []^Stmt) {
     ctx := ctx_make(text)
     env := env_make(nil)
     for stmt in stmts {
-        exec_stmt(&ctx, env, stmt)
+        cf_token := exec_stmt(&ctx, env, stmt)
+        if cf_token != nil {
+            script_errorf(&ctx, stmt.loc, "Control flow expression not allowed in global scope: %v", cf_token)
+        }
     }
 }
 
-exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) {
+@(require_results)
+exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
     switch stmt in stmt.un {
         case Stmt_Expr:
             eval_expr(ctx, env, stmt.expr)
@@ -171,16 +182,21 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) {
             env_set(env, stmt.name.name, value)
         case Stmt_If:
             val := eval_expr(ctx, env, stmt.cond)
-            if v, ok := val.(bool); ok {
-                exec_stmt(ctx, env, stmt.branch_t)
-            } else {
-                exec_stmt(ctx, env, stmt.branch_f)
+            if value_to_bool(val) {
+                return exec_stmt(ctx, env, stmt.branch_t)
+            } else if stmt.branch_f != nil {
+                return exec_stmt(ctx, env, stmt.branch_f)
             }
         case Stmt_For:
             for {
                 val := eval_expr(ctx, env, stmt.cond)
                 if value_to_bool(val) {
-                    exec_stmt(ctx, env, stmt.body)
+                    cf_token := exec_stmt(ctx, env, stmt.body)
+                    if cf_token == .Break {
+                        break
+                    } else if cf_token == .Return {
+                        return cf_token
+                    }
                 } else {
                     break
                 }
@@ -190,12 +206,21 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) {
         case []^Stmt:
             env := env_make(env)
             for stmt in stmt {
-                exec_stmt(ctx, env, stmt)
+                cf_token := exec_stmt(ctx, env, stmt)
+                if cf_token != nil {
+                    return cf_token
+                }
             }
         case Stmt_Return:
             val := eval_expr(ctx, env, stmt.expr)
             ctx.ret_stack[len(ctx.ret_stack)-1] = val
+            return .Return
+        case Stmt_Break:
+            return .Break
+        case Stmt_Continue:
+            return .Continue
     }
+    return nil
 }
 
 eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
@@ -253,8 +278,13 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
                     env_set(env, p.name.name, evaluated_args[i])
                 }
                 stmts, stmts_ok := fn.body.un.([]^Stmt)
-                for stmt in stmts {
-                    exec_stmt(ctx, env, stmt)
+                loopin_stmts: for stmt in stmts {
+                    cf_token := exec_stmt(ctx, env, stmt)
+                    switch cf_token {
+                        case .Break, .Continue: script_errorf(ctx, stmt.loc, "Control flow statement used outside of loop: %v", cf_token)
+                        case .Return: break loopin_stmts
+                        case .None:
+                    }
                 }
                 return pop(&ctx.ret_stack)
             } else if fn, ok := val.(Builtin_Func); ok {

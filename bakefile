@@ -1,4 +1,13 @@
 
+let i = 0
+for i != 10 {
+    print("Val is ${i}\n")
+    if i == 4 {
+        break
+    }
+    i = i + 1
+}
+
 # Recipe for building C files
 func build(input, output) {
     bake-task(
