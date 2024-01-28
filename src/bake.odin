@@ -52,18 +52,5 @@ main :: proc() {
     }
     parser := parser_make(transmute(string) bakefile_bytes)
     stmts := parse_stmts(&parser)
-    tasks := exec_stmts(stmts)
-    // tasks := []Task {
-    //     Task {
-    //         cmd = []string{ "clang.exe", "-c", "testing/print-args.c", "-o", "print-args.o" },
-    //         inputs = []string { "testing/print-args.c" },
-    //         outputs = []string{ "print-args.o" },
-    //     },
-    //     Task {
-    //         cmd = []string{ "clang.exe", "print-args.o", "-o", "print-args.exe" },
-    //         inputs = []string{ "print-args.o" },
-    //         outputs = []string{ "print-args.exe" },
-    //     },
-    // }
-    
+    exec_stmts(stmts)
 }

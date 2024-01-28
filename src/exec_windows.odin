@@ -64,6 +64,8 @@ _win_exec_cmdline :: proc(app_name: windows.wstring, cmd_line: windows.wstring) 
         }
         return -1, .Unhandled_Error
     }
+    defer windows.CloseHandle(process_info.hProcess)
+    defer windows.CloseHandle(process_info.hThread)
     wait_status := windows.WaitForSingleObject(process_info.hProcess, windows.INFINITE)
     if wait_status == windows.WAIT_FAILED {
         printf_verbose("WaitForSingleObject Error: %v\n", windows.GetLastError())
@@ -78,8 +80,6 @@ _win_exec_cmdline :: proc(app_name: windows.wstring, cmd_line: windows.wstring) 
         printf_verbose("GetExitCode Crror: %v\n", windows.GetLastError())
         return -1, .Unhandled_Error
     }
-    windows.CloseHandle(process_info.hProcess)
-    windows.CloseHandle(process_info.hThread)
     return cast(int) exit_code, .None
 }
 

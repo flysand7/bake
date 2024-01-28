@@ -152,13 +152,12 @@ env_set :: proc(env: ^Env, name: string, value: Value) {
     start_env.scope[name] = value
 }
 
-exec_stmts :: proc(stmts: []^Stmt) -> []Recipe {
+exec_stmts :: proc(stmts: []^Stmt) {
     ctx := ctx_make()
     env := env_make(nil)
     for stmt in stmts {
         exec_stmt(&ctx, env, stmt)
     }
-    return ctx.tasks[:]
 }
 
 exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) {

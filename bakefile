@@ -1,0 +1,3 @@
+
+print('--------------- BUILD SYSTEM SHIT HERE -----------------------\n')
+cmd('odin.exe', 'build', 'src', '-out:bake.exe', '-o:none', '-debug', '-show-system-calls')
