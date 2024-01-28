@@ -23,6 +23,10 @@ Binary_Op :: enum {
     Ge,
     Lt,
     Gt,
+    And,
+    Or,
+    Xor,
+    Implies,
     Subscript,
 }
 
@@ -700,12 +704,12 @@ parse_expr2 :: proc(p: ^Parser) -> ^Expr {
 }
 
 parse_expr3 :: proc(p: ^Parser) -> ^Expr {
-    lhs := parse_expr2(p)
+    lhs := parse_expr3(p)
     for parser_op_is(p, .Eq) || parser_op_is(p, .Ne) || parser_op_is(p, .Lt) || parser_op_is(p, .Gt) || parser_op_is(p, .Le) || parser_op_is(p, .Ge) {
         t := p.token.un.(Token_Operator)
         parser_token_next(p)
         skip_newline(p)
-        rhs := parse_expr2(p)
+        rhs := parse_expr3(p)
         bop := Binary_Op(nil)
         #partial switch t {
             case .Eq: bop = .Eq
@@ -719,8 +723,35 @@ parse_expr3 :: proc(p: ^Parser) -> ^Expr {
     }
     return lhs
 }
+
+parse_expr4 :: proc(p: ^Parser) -> ^Expr {
+    lhs := parse_expr3(p)
+    for {
+        op: string
+        if ident, ok := p.token.un.(Identifier); !ok {
+            break
+        } else {
+            op = ident.name
+        }
+        if op == "and" || op == "or" || op == "xor" || op == "implies" {
+            parser_token_next(p)
+            skip_newline(p)
+            rhs := parse_expr3(p)
+            bop := Binary_Op(nil)
+            switch op {
+                case "and":     bop = .And
+                case "or":      bop = .Or
+                case "xor":     bop = .Xor
+                case "implies": bop = .Implies
+            }
+            lhs = expr_make_binary_op(bop, lhs, rhs)
+        }
+    }
+    return lhs
+}
+
 parse_expr :: proc(p: ^Parser) -> ^Expr {
-    return parse_expr3(p)
+    return parse_expr4(p)
 }
 
 parse_expr_toplevel :: proc(p: ^Parser) -> ^Expr {
