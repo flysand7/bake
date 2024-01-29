@@ -7,7 +7,7 @@ import "core:intrinsics"
 import "core:reflect"
 
 Unary_Op :: enum {
-
+    Not,
 }
 
 Binary_Op :: enum {
@@ -655,13 +655,22 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
     return expr
 }
 
+parse_expr_unary :: proc(p: ^Parser) -> ^Expr {
+    if parser_op_match(p, .Not) {
+        parser_token_next(p)
+        expr := parse_expr_simple(p)
+        return expr_make_unary_op(.Not, expr)
+    }
+    return parse_expr_simple(p)
+}
+
 parse_expr0 :: proc(p: ^Parser) -> ^Expr {
-    lhs := parse_expr_simple(p)
+    lhs := parse_expr_unary(p)
     for parser_op_is(p, .Nvl) {
         t := p.token.un.(Token_Operator)
         parser_token_next(p)
         skip_newline(p)
-        rhs := parse_expr_simple(p)
+        rhs := parse_expr_unary(p)
         lhs = expr_make_binary_op(Binary_Op(.Nvl), lhs, rhs)
     }
     return lhs

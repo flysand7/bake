@@ -42,3 +42,4 @@ build('testing/print-args.c', 'a.exe')
 # Build and run
 bake-build(['a.exe'])
 cmd('a.exe', 1, 2, 3)
+

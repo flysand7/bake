@@ -241,6 +241,9 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
             script_errorf(ctx, expression.loc, "Value %s is not defined in the current scope", expr.name)
         case Expr_Unary:
             switch expr.op {
+                case .Not:
+                    val := eval_expr(ctx, env, expr.expr)
+                    return ! value_to_bool(val)
             }
             unreachable()
         case Expr_Binary:
