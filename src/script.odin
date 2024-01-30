@@ -14,6 +14,7 @@ Value :: union {
     Builtin_Func,
     []Value,
     map[string]Value,
+    ^Value, // reference, created when doing e.g. `arr[i] = 2`
 }
 
 Env :: struct {
@@ -35,11 +36,28 @@ CF_Token :: enum {
     Return,
 }
 
+value_is_ref :: proc(v: Value) -> bool {
+    if _, isref := v.(^Value); isref {
+        return true
+    }
+    return false
+}
+
+value_deref :: proc(v: Value) -> Value {
+    v := v
+    if _, isref := v.(^Value); isref {
+        v = v.(^Value)^
+    }
+    return v
+}
+
 value_is_nil :: proc(v: Value) -> bool {
+    v := value_deref(v)
     return v == nil
 }
 
 value_is_int :: proc(v: Value) -> bool {
+    v := value_deref(v)
     if _, ok := v.(i64); ok {
         return true
     }
@@ -47,6 +65,7 @@ value_is_int :: proc(v: Value) -> bool {
 }
 
 value_is_str :: proc(v: Value) -> bool {
+    v := value_deref(v)
     if _, ok := v.(string); ok {
         return true
     }
@@ -54,6 +73,7 @@ value_is_str :: proc(v: Value) -> bool {
 }
 
 value_is_bool :: proc(v: Value) -> bool {
+    v := value_deref(v)
     if _, ok := v.(bool); ok {
         return true
     }
@@ -61,6 +81,7 @@ value_is_bool :: proc(v: Value) -> bool {
 }
 
 value_is_arr :: proc(v: Value) -> bool {
+    v := value_deref(v)
     if _, ok := v.([]Value); ok {
         return true
     }
@@ -68,6 +89,7 @@ value_is_arr :: proc(v: Value) -> bool {
 }
 
 value_is_func :: proc(v: Value) -> bool {
+    v := value_deref(v)
     if _, ok := v.(Stmt_Func); ok {
         return true
     }
@@ -75,6 +97,7 @@ value_is_func :: proc(v: Value) -> bool {
 }
 
 value_is_builtin :: proc(v: Value) -> bool {
+    v := value_deref(v)
     if _, ok := v.(Builtin_Func); ok {
         return true
     }
@@ -82,10 +105,12 @@ value_is_builtin :: proc(v: Value) -> bool {
 }
 
 value_is_any_func :: proc(v: Value) -> bool {
+    v := value_deref(v)
     return value_is_func(v) || value_is_builtin(v)
 }
 
 value_to_int :: proc(v: Value) -> (i64, bool) {
+    v := value_deref(v)
     if i, ok := v.(i64); ok {
         return i, true
     } else {
@@ -94,6 +119,7 @@ value_to_int :: proc(v: Value) -> (i64, bool) {
 }
 
 value_to_str :: proc(value: Value) -> (string, bool) {
+    value := value_deref(value)
     #partial switch v in value {
         case nil:    return "", true
         case bool:   return v? "true" : "false", true
@@ -104,6 +130,7 @@ value_to_str :: proc(value: Value) -> (string, bool) {
 }
 
 value_to_bool :: proc(value: Value) -> bool {
+    value := value_deref(value)
     #partial switch v in value {
         case nil: return false
         case bool: return v
@@ -253,14 +280,18 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
                 if ident, ok := expr.lhs.un.(Identifier); ok {
                     new_value := eval_expr(ctx, env, expr.rhs)
                     env_set(env, ident.name, new_value)
-                    after_set := env_get(env, ident.name)
-                    return nil
                 } else {
-                    script_errorf(ctx, expression.loc, "Can only assign to plain variables")
+                    value := eval_expr(ctx, env, expr.rhs)
+                    target := eval_expr(ctx, env, expr.lhs)
+                    if !value_is_ref(target) {
+                        script_errorf(ctx, expression.loc, "Assignment target is not an lvalue")
+                    }
+                    target.(^Value)^ = value_deref(value)
                 }
+                return nil
             }
-            lhs := eval_expr(ctx, env, expr.lhs)
-            rhs := eval_expr(ctx, env, expr.rhs)
+            lhs := value_deref(eval_expr(ctx, env, expr.lhs))
+            rhs := value_deref(eval_expr(ctx, env, expr.rhs))
             return eval_binary_op(ctx, expression.loc, expr.op, lhs, rhs)
         case Expr_Ternary:
             switch expr.op {
@@ -269,7 +300,7 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
         case Expr_Call:
             evaluated_args := make([dynamic]Value)
             for arg in expr.args {
-                append(&evaluated_args, eval_expr(ctx, env, arg))
+                append(&evaluated_args, value_deref(eval_expr(ctx, env, arg)))
             }
             mb_val := env_get(env, expr.fn.name)
             func := Stmt_Func{}
@@ -530,7 +561,7 @@ eval_binary_op :: proc(
             if index < 0 && auto_cast len(arr) <= index {
                 script_errorf(ctx, op_loc, "Out of bounds array access")
             }
-            return arr[index]
+            return &arr[index]
         case .Member:
             // TODO: error handling of type of un
             dict := lhs.(map[string]Value)
@@ -539,7 +570,7 @@ eval_binary_op :: proc(
             if key not_in dict {
                 script_errorf(ctx, op_loc, "Key '%s' not in the dictionary")
             }
-            return dict[key]
+            return &dict[key]
     }
     unreachable()
 }

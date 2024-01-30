@@ -4,7 +4,11 @@ let options = {
     build_mode = 'exe',
 }
 
-print(options.debug)
+
+options.debug = true
+
+let isd = options.debug
+print("Is debug: ${isd}\n")
 
 # Recipe for building C files
 func build(input, output) {
