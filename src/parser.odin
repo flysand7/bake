@@ -28,6 +28,7 @@ Binary_Op :: enum {
     Xor,
     Implies,
     Subscript,
+    Member,
 }
 
 Ternary_Op :: enum {
@@ -81,19 +82,25 @@ Expr_Array :: struct {
     exprs: []^Expr,
 }
 
+Expr_Dict :: struct {
+    names: []Identifier,
+    values: []^Expr,
+}
+
 Lit_Nil :: struct {}
 
 Expr_Un :: union {
+    Identifier,
     Lit_Nil,
     Lit_String,
     Lit_Template,
     Lit_Int,
-    Identifier,
+    Expr_Array,
+    Expr_Dict,
     Expr_Unary,
     Expr_Binary,
     Expr_Ternary,
     Expr_Call,
-    Expr_Array,
 }
 
 Expr :: struct {
@@ -172,6 +179,7 @@ Token_Operator :: enum {
     Ge,
     Nvl,
     Comma,
+    Dot,
     Assign,
     Arrow,
     LParen,
@@ -406,6 +414,8 @@ parser_token_next :: proc(p: ^Parser) {
         t.un = Token_Operator.RBrace
     } else if parser_char_match(p, ',') {
         t.un = Token_Operator.Comma
+    } else if parser_char_match(p, '.') {
+        t.un = Token_Operator.Dot
     } else if parser_char_match(p, '+') {
         t.un = Token_Operator.Add
     } else if parser_char_match(p, '*') {
@@ -440,12 +450,12 @@ parser_token_is :: proc(p: ^Parser, $T: typeid) -> (T, bool) {
 }
 
 @(require_results)
-parser_token_match :: proc(p: ^Parser, $T: typeid) -> bool {
-    if p.token.un.(T) {
+parser_token_match :: proc(p: ^Parser, $T: typeid) -> (T, bool) {
+    if v, ok := p.token.un.(T); ok {
         parser_token_next(p)
-        return true
+        return v, true
     }
-    return false
+    return {}, false
 }
 
 parser_token_expect :: proc(p: ^Parser, $T: typeid) -> T {
@@ -644,6 +654,40 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
         return expr_make(loc, Expr_Array{
             exprs = exprs[:],
         })
+    } else if parser_op_is(p, .LBrace) {
+        lbracket_loc := p.token.loc
+        parser_op_expect(p, .LBrace)
+        skip_newline(p)
+        names := make([dynamic]Identifier)
+        exprs := make([dynamic]^Expr)
+        loc := p.token.loc
+        parse_next_ok := true
+        for !parser_op_is(p, .RBrace) {
+            if !parse_next_ok {
+                parse_errorf(p, p.token.loc, "Expected ',' to separate values in an array literal")
+            }
+            if p.token.un == nil {
+                parse_errorf(p, lbracket_loc, "'[' is not terminated by ']'")
+            }
+            if ident, ok := parser_token_is(p, Identifier); ok {
+                parser_token_next(p)
+                append(&names, ident)
+                parser_op_expect(p, .Assign)
+                append(&exprs, parse_expr(p))
+                if !parser_op_match(p, .Comma) {
+                    parse_next_ok = false
+                }
+                skip_newline(p)
+            } else {
+                parse_errorf(p, p.token.loc, "Expected identifier in a dict")
+            }
+        }
+        loc = merge_locs(loc, p.token.loc)
+        parser_op_expect(p, .RBrace)
+        return expr_make(loc, Expr_Dict {
+            names = names[:],
+            values = exprs[:],
+        })
     } else if parser_op_match(p, .LParen) {
         skip_newline(p)
         defer parser_op_expect(p, .RParen)
@@ -655,13 +699,26 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
     return expr
 }
 
+parse_expr_not_so_simple :: proc (p: ^Parser) -> ^Expr {
+    expr := parse_expr_simple(p)
+    if parser_op_match(p, .Dot) {
+        ident_loc := p.token.loc
+        if ident, ok := parser_token_match(p, Identifier); ok {
+            return expr_make_binary_op(.Member, expr, expr_make(ident_loc, Lit_String{ident.name}))
+        } else {
+            parse_errorf(p, p.token.loc, "Expected an identifier following a member operation")
+        }
+    }
+    return expr
+}
+
 parse_expr_unary :: proc(p: ^Parser) -> ^Expr {
     if parser_op_match(p, .Not) {
         parser_token_next(p)
-        expr := parse_expr_simple(p)
+        expr := parse_expr_not_so_simple(p)
         return expr_make_unary_op(.Not, expr)
     }
-    return parse_expr_simple(p)
+    return parse_expr_not_so_simple(p)
 }
 
 parse_expr0 :: proc(p: ^Parser) -> ^Expr {
@@ -713,12 +770,12 @@ parse_expr2 :: proc(p: ^Parser) -> ^Expr {
 }
 
 parse_expr3 :: proc(p: ^Parser) -> ^Expr {
-    lhs := parse_expr3(p)
+    lhs := parse_expr2(p)
     for parser_op_is(p, .Eq) || parser_op_is(p, .Ne) || parser_op_is(p, .Lt) || parser_op_is(p, .Gt) || parser_op_is(p, .Le) || parser_op_is(p, .Ge) {
         t := p.token.un.(Token_Operator)
         parser_token_next(p)
         skip_newline(p)
-        rhs := parse_expr3(p)
+        rhs := parse_expr2(p)
         bop := Binary_Op(nil)
         #partial switch t {
             case .Eq: bop = .Eq

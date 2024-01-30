@@ -13,6 +13,7 @@ Value :: union {
     Stmt_Func,
     Builtin_Func,
     []Value,
+    map[string]Value,
 }
 
 Env :: struct {
@@ -109,6 +110,7 @@ value_to_bool :: proc(value: Value) -> bool {
         case i64: return v != 0
         case string: return v != ""
         case []Value: return len(v) != 0
+        case map[string]Value: return len(v) != 0
         case: return true
     }
 }
@@ -303,6 +305,12 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
                 append(&values, eval_expr(ctx, env, e))
             }
             return values[:]
+        case Expr_Dict:
+            vm := make(map[string]Value)
+            for i in 0 ..< len(expr.names) {
+                vm[expr.names[i].name] = eval_expr(ctx, env, expr.values[i])
+            }
+            return vm
     }
     unreachable()
 }
@@ -513,6 +521,7 @@ eval_binary_op :: proc(
                 return rhs
             }
         case .Subscript:
+            // TODO: error handling on type of un
             arr := lhs.([]Value)
             if !value_is_int(rhs) {
                 script_errorf(ctx, op_loc, "Attempt to subscript array with non-integer type")
@@ -522,6 +531,15 @@ eval_binary_op :: proc(
                 script_errorf(ctx, op_loc, "Out of bounds array access")
             }
             return arr[index]
+        case .Member:
+            // TODO: error handling of type of un
+            dict := lhs.(map[string]Value)
+            key, key_ok := value_to_str(rhs)
+            assert(key_ok)
+            if key not_in dict {
+                script_errorf(ctx, op_loc, "Key '%s' not in the dictionary")
+            }
+            return dict[key]
     }
     unreachable()
 }
