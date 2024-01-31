@@ -12,7 +12,7 @@ print("Is debug: ${isd}\n")
 
 # Recipe for building C files
 func build(input, output) {
-    bake-task(
+    bake-recipe(
         [
             ['clang.exe', input, '-o', output],
         ],
