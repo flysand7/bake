@@ -143,6 +143,7 @@ Func_Param :: struct {
 }
 
 Stmt_Func :: struct {
+    is_cli: bool,
     name: Identifier,
     params: []Func_Param,
     body: ^Stmt,
@@ -560,7 +561,7 @@ stmt_make :: proc(loc: Loc, un: Stmt_Un) -> ^Stmt {
 }
 
 skip_newline :: proc(p: ^Parser) {
-    if parser_op_is(p, .Ln) {
+    for parser_op_is(p, .Ln) {
         parser_token_next(p)
     }
 }
@@ -901,9 +902,17 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
             case "func":
                 l := p.token.loc
                 parser_token_next(p)
+                is_cli := false
+                if str, ok := parser_token_match(p, Lit_String); ok {
+                    if str.value != "cli" {
+                        parse_errorf(p, p.token.loc, "String after 'func' keyword can only be 'cli'")
+                    }
+                    is_cli = true
+                }
                 ident := parser_token_expect(p, Identifier)
                 lparen_loc := p.token.loc
                 parser_op_expect(p, .LParen)
+                skip_newline(p)
                 ops := make([dynamic]Func_Param)
                 parse_next_ok := true
                 for !parser_op_match(p, .RParen) {
@@ -933,6 +942,7 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
                 body := parse_stmt_block(p)
                 expect_1_skip_newlines(p)
                 return stmt_make(merge_locs(l, l2), Stmt_Func {
+                    is_cli = is_cli,
                     name = ident,
                     body = body,
                     params = ops[:],

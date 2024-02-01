@@ -190,15 +190,16 @@ env_set :: proc(env: ^Env, name: string, value: Value) {
     start_env.scope[name] = value
 }
 
-exec_stmts :: proc(text: string, stmts: []^Stmt) {
+exec_stmts :: proc(text: string, stmts: []^Stmt) -> Ctx {
     ctx := ctx_make(text)
-    env := env_make(nil)
+    env := ctx.global_env
     for stmt in stmts {
         cf_token := exec_stmt(&ctx, env, stmt)
         if cf_token != nil {
             script_errorf(&ctx, stmt.loc, "Control flow expression not allowed in global scope: %v", cf_token)
         }
     }
+    return ctx
 }
 
 @(require_results)
@@ -307,24 +308,14 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
             if val, ok := mb_val.?; !ok {
                 script_errorf(ctx, expression.loc, "Value %s is not defined", expr.fn.name)
             } else if fn, ok := val.(Stmt_Func); ok {
-                if len(expr.args) != len(fn.params) {
-                    script_errorf(ctx, expression.loc, "Cannot call function with %d arguments. Expected %d arguments", len(expr.args), len(fn.params))
+                ret, err := call_func(ctx, env, fn, evaluated_args[:])
+                if tok, ok := err.(Call_Func_Err_CF_Token); ok {
+                    script_errorf(ctx, expression.loc, "Cotrol flow statement used outside of while loop: %v", tok)
+                } else if _, ok := err.(Call_Func_Err_Param_Mismatch); ok {
+                    script_errorf(ctx, expression.loc, "Argument count mismatch: expected %d, got %d", len(func.params), len(evaluated_args))
+                } else {
+                    return ret
                 }
-                append(&ctx.ret_stack, nil)
-                env := env_make(ctx.global_env)
-                for p, i in fn.params {
-                    env_set(env, p.name.name, evaluated_args[i])
-                }
-                stmts, stmts_ok := fn.body.un.([]^Stmt)
-                loopin_stmts: for stmt in stmts {
-                    cf_token := exec_stmt(ctx, env, stmt)
-                    switch cf_token {
-                        case .Break, .Continue: script_errorf(ctx, stmt.loc, "Control flow statement used outside of loop: %v", cf_token)
-                        case .Return: break loopin_stmts
-                        case .None:
-                    }
-                }
-                return pop(&ctx.ret_stack)
             } else if fn, ok := val.(Builtin_Func); ok {
                 return fn(ctx, evaluated_args[:])
             } else {
@@ -344,6 +335,38 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
             return vm
     }
     unreachable()
+}
+
+Call_Func_Err_Param_Mismatch :: struct {}
+
+Call_Func_Err_CF_Token :: struct {
+    tok: CF_Token,
+}
+
+Call_Func_Err :: union {
+    Call_Func_Err_Param_Mismatch,
+    Call_Func_Err_CF_Token,
+}
+
+call_func :: proc(ctx: ^Ctx, env: ^Env, fn: Stmt_Func, args: []Value) -> (Value, Call_Func_Err) {
+    if len(args) != len(fn.params) {
+        return nil, Call_Func_Err_Param_Mismatch{}
+    }
+    append(&ctx.ret_stack, nil)
+    env := env_make(ctx.global_env)
+    for p, i in fn.params {
+        env_set(env, p.name.name, args[i])
+    }
+    stmts, stmts_ok := fn.body.un.([]^Stmt)
+    loopin_stmts: for stmt in stmts {
+        cf_token := exec_stmt(ctx, env, stmt)
+        switch cf_token {
+            case .Break, .Continue: return nil, Call_Func_Err_CF_Token {cf_token}
+            case .Return: break loopin_stmts
+            case .None:
+        }
+    }
+    return pop(&ctx.ret_stack), nil
 }
 
 eval_binary_op :: proc(

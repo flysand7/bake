@@ -11,7 +11,7 @@ let isd = options.debug
 print("Is debug: ${isd}\n")
 
 # Recipe for building C files
-func build(input, output) {
+func compile(input, output) {
     bake-recipe(
         [
             ['clang.exe', input, '-o', output],
@@ -21,10 +21,12 @@ func build(input, output) {
     )
 }
 
-# Create the recipe
-build('testing/print-args.c', 'a.exe')
+func 'cli' build(exe-name) {
+    # Create the recipe
+    compile('testing/print-args.c', exe-name)
 
-# Build and run
-bake-build(['a.exe'])
-cmd('a.exe', 1, 2, 3)
+    # Build and run
+    bake-build([exe-name])
+    cmd(exe-name, 1, 2, 3)
+}
 
