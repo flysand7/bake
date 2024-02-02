@@ -407,6 +407,7 @@ eval_binary_op :: proc(
                 for v in rhs.([]Value) {
                     append(&joined, v)
                 }
+                return joined[:]
             } else {
                 lhs_str, lhs_ok := value_to_str(lhs)
                 rhs_str, rhs_ok := value_to_str(rhs)

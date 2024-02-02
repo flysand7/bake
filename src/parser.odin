@@ -842,13 +842,12 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
             case "if":
                 parser_token_next(p)
                 cond := parse_expr(p)
-                branch_t := parse_stmt_block(p)
+                branch_t := parse_stmt(p)
                 branch_f := cast(^Stmt) (nil)
                 if ident, ok := parser_token_is(p, Identifier); ok && ident.name == "else" {
                     parser_token_next(p)
-                    branch_f := parse_stmt_block(p)
+                    branch_f = parse_stmt(p)
                 }
-                expect_1_skip_newlines(p)
                 return stmt_make(cond.loc, Stmt_If {
                     cond = cond,
                     branch_t = branch_t,
@@ -964,6 +963,8 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
                 parser_token_next(p)
                 return stmt_make(loc, Stmt_Continue {})
         }
+    } else if parser_op_is(p, .LBrace) {
+        return parse_stmt_block(p)
     }
     expr := parse_expr_toplevel(p)
     return stmt_make(expr.loc, Stmt_Expr { expr })
