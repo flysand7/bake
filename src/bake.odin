@@ -74,7 +74,7 @@ main :: proc() {
         } else if func, ok := value.(Stmt_Func); !ok {
             panic("Not a function")
         } else {
-            ret, err := call_func(&ctx, ctx.global_env, value.(Stmt_Func), cli_args[:])
+            ret, err := call_func(&ctx, ctx.global_env, value.(Stmt_Func), []Value{cli_args[:]})
             if tok, ok := err.(Call_Func_Err_CF_Token); ok && tok.tok != nil {
                 panic("Cotrol flow statement used outside of while loop")
             } else if _, ok := err.(Call_Func_Err_Param_Mismatch); ok {

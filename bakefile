@@ -21,7 +21,11 @@ func compile(input, output) {
     )
 }
 
-func 'cli' build(exe-name) {
+func 'cli' build(args) {
+    if len(args) < 1 {
+        print("Syntax: build <exe-name>")
+    }
+    let exe-name = args[0]
     # Create the recipe
     compile('testing/print-args.c', exe-name)
 
