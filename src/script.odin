@@ -88,6 +88,14 @@ value_is_arr :: proc(v: Value) -> bool {
     return false
 }
 
+value_is_map :: proc(v: Value) -> bool {
+    v := value_deref(v)
+    if _, ok := v.(map[string]Value); ok {
+        return true
+    }
+    return false
+}
+
 value_is_func :: proc(v: Value) -> bool {
     v := value_deref(v)
     if _, ok := v.(Stmt_Func); ok {
@@ -577,16 +585,30 @@ eval_binary_op :: proc(
                 return rhs
             }
         case .Subscript:
-            // TODO: error handling on type of un
-            arr := lhs.([]Value)
-            if !value_is_int(rhs) {
-                script_errorf(ctx, op_loc, "Attempt to subscript array with non-integer type")
+            if value_is_arr(lhs) {
+                if !value_is_int(rhs) {
+                    script_errorf(ctx, op_loc, "Attempt to subscript array with non-integer type")
+                }
+                arr := lhs.([]Value)
+                index := rhs.(i64)
+                if index < 0 || auto_cast len(arr) <= index {
+                    script_errorf(ctx, op_loc, "Out of bounds array access")
+                }
+                return &arr[index]
+            } else if value_is_map(lhs) {
+                v, ok := value_to_str(rhs)
+                if !ok {
+                    script_errorf(ctx, op_loc, "Dict subscript must be with a string")
+                }
+                m := lhs.(map[string]Value)
+                if v not_in m {
+                    return nil
+                } else {
+                    return m[v]
+                }
+            } else {
+                script_errorf(ctx, op_loc, "Can only subscript an array or a dict")
             }
-            index := rhs.(i64)
-            if index < 0 || auto_cast len(arr) <= index {
-                script_errorf(ctx, op_loc, "Out of bounds array access")
-            }
-            return &arr[index]
         case .Member:
             // TODO: error handling of type of un
             dict := lhs.(map[string]Value)
