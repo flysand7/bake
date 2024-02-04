@@ -249,6 +249,7 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
             return .Break
         case Stmt_Continue:
             return .Continue
+        case: unreachable()
     }
     return nil
 }
@@ -333,8 +334,8 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
                 vm[expr.names[i].name] = eval_expr(ctx, env, expr.values[i])
             }
             return vm
+        case: unreachable()
     }
-    unreachable()
 }
 
 Call_Func_Err_Param_Mismatch :: struct {}
@@ -582,7 +583,7 @@ eval_binary_op :: proc(
                 script_errorf(ctx, op_loc, "Attempt to subscript array with non-integer type")
             }
             index := rhs.(i64)
-            if index < 0 && auto_cast len(arr) <= index {
+            if index < 0 || auto_cast len(arr) <= index {
                 script_errorf(ctx, op_loc, "Out of bounds array access")
             }
             return &arr[index]
@@ -592,11 +593,11 @@ eval_binary_op :: proc(
             key, key_ok := value_to_str(rhs)
             assert(key_ok)
             if key not_in dict {
-                script_errorf(ctx, op_loc, "Key '%s' not in the dictionary")
+                script_errorf(ctx, op_loc, "Key '%s' not in the dictionary", key)
             }
             return &dict[key]
+        case: unreachable()
     }
-    unreachable()
 }
 
 eval_template :: proc(ctx: ^Ctx, env: ^Env, loc: Loc, str: string) -> string {
