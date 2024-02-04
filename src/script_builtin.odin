@@ -10,8 +10,15 @@ builtin_print :: proc(ctx: ^Ctx, args: []Value) -> Value {
 }
 
 builtin_cmd :: proc(ctx: ^Ctx, args: []Value) -> Value {
+    if len(args) != 1 {
+        panic("cmd(arr) takes one array parameter")
+    }
+    arr, ok := args[0].([]Value)
+    if !ok {
+        panic("cmd(arr) takes one array parameter")
+    }
     strings := make([dynamic]string)
-    for arg in args {
+    for arg in arr {
         str, ok := value_to_str(arg)
         if !ok {
             panic("cmd(arr) One of the values doesn't cast to string")
