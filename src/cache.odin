@@ -8,8 +8,8 @@ Cache :: struct {
 }
 
 cache_open :: proc() -> Cache {
-    bytes, ok := os.read_entire_file(".bake-cache")
-    if !ok {
+    bytes, err := os.read_entire_file(".bake-cache", context.allocator)
+    if err != nil {
         return Cache {}
     }
     files := slice.reinterpret([]File, bytes)
@@ -41,7 +41,7 @@ cache_find :: proc(cache: ^Cache, file: File) -> (File, bool) {
 
 cache_write :: proc(cache: ^Cache) {
     bytes := slice.reinterpret([]u8, cache.files[:])
-    ok := os.write_entire_file(".bake-cache", bytes, true)
-    assert(ok)
+    err := os.write_entire_file(".bake-cache", bytes, {.Read_Other,.Read_Group,.Read_User,.Write_User})
+    assert(err == nil)
 }
 

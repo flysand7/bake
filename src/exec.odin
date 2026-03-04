@@ -13,17 +13,20 @@ run_cmd :: proc(command: Cmd) -> (int, Exec_Error) {
         case Builtin_Cmd:
             return cmd.execute(cmd.args), .None
         case string:
-            return run_shell_cmd(cmd)
+            // TODO(flysand): Support string cmdline arguments to run_cmd.
+            panic("Running via cmdline is temporarily not supported")
         case []string:
             return run_system_cmd(cmd)
     }
     unreachable()
 }
 
-run_shell_cmd :: proc(command_line: string) -> (int, Exec_Error) {
-    return _os_exec_cmdline(command_line)
-}
-
 run_system_cmd :: proc(argv: []string) -> (int, Exec_Error) {
-    return _os_exec_argv(argv)
+    state, stdout, stderr, err := os.process_exec(os.Process_Desc {
+        command = argv,
+    }, context.allocator)
+    if err != nil {
+        panic("Unable to start process")
+    }
+    return state.exit_code, nil
 }

@@ -54,8 +54,8 @@ main :: proc() {
         }
     }
     printf_verbose("Bakefile Path: %s\n", bakefile_path)
-    bakefile_bytes, ok := os.read_entire_file(bakefile_path)
-    if !ok {
+    bakefile_bytes, err := os.read_entire_file(bakefile_path, context.temp_allocator)
+    if err != nil {
         fmt.eprintf("Failed to open bakefile: %s\n", bakefile_path)
         os.exit(1)
     }

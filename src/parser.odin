@@ -1,9 +1,9 @@
 package bake
 
+import "base:intrinsics"
 import "core:unicode/utf8"
 import "core:strconv"
 import "core:strings"
-import "core:intrinsics"
 import "core:reflect"
 
 Unary_Op :: enum {
