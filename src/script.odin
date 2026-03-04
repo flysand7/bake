@@ -213,136 +213,136 @@ exec_stmts :: proc(text: string, stmts: []^Stmt) -> Ctx {
 @(require_results)
 exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
     switch stmt in stmt.un {
-        case Stmt_Expr:
-            eval_expr(ctx, env, stmt.expr)
-        case Stmt_Decl:
-            value := eval_expr(ctx, env, stmt.value)
-            env_set(env, stmt.name.name, value)
-        case Stmt_If:
+    case Stmt_Expr:
+        eval_expr(ctx, env, stmt.expr)
+    case Stmt_Decl:
+        value := eval_expr(ctx, env, stmt.value)
+        env_set(env, stmt.name.name, value)
+    case Stmt_If:
+        val := eval_expr(ctx, env, stmt.cond)
+        if value_to_bool(val) {
+            return exec_stmt(ctx, env, stmt.branch_t)
+        } else if stmt.branch_f != nil {
+            return exec_stmt(ctx, env, stmt.branch_f)
+        }
+    case Stmt_For:
+        for {
             val := eval_expr(ctx, env, stmt.cond)
             if value_to_bool(val) {
-                return exec_stmt(ctx, env, stmt.branch_t)
-            } else if stmt.branch_f != nil {
-                return exec_stmt(ctx, env, stmt.branch_f)
-            }
-        case Stmt_For:
-            for {
-                val := eval_expr(ctx, env, stmt.cond)
-                if value_to_bool(val) {
-                    cf_token := exec_stmt(ctx, env, stmt.body)
-                    if cf_token == .Break {
-                        break
-                    } else if cf_token == .Return {
-                        return cf_token
-                    }
-                } else {
+                cf_token := exec_stmt(ctx, env, stmt.body)
+                if cf_token == .Break {
                     break
-                }
-            }
-        case Stmt_Func:
-            env_set(env, stmt.name.name, stmt)
-        case []^Stmt:
-            env := env_make(env)
-            for stmt in stmt {
-                cf_token := exec_stmt(ctx, env, stmt)
-                if cf_token != nil {
+                } else if cf_token == .Return {
                     return cf_token
                 }
+            } else {
+                break
             }
-        case Stmt_Return:
-            val := eval_expr(ctx, env, stmt.expr)
-            ctx.ret_stack[len(ctx.ret_stack)-1] = val
-            return .Return
-        case Stmt_Break:
-            return .Break
-        case Stmt_Continue:
-            return .Continue
-        case: unreachable()
+        }
+    case Stmt_Func:
+        env_set(env, stmt.name.name, stmt)
+    case []^Stmt:
+        env := env_make(env)
+        for stmt in stmt {
+            cf_token := exec_stmt(ctx, env, stmt)
+            if cf_token != nil {
+                return cf_token
+            }
+        }
+    case Stmt_Return:
+        val := eval_expr(ctx, env, stmt.expr)
+        ctx.ret_stack[len(ctx.ret_stack)-1] = val
+        return .Return
+    case Stmt_Break:
+        return .Break
+    case Stmt_Continue:
+        return .Continue
+    case: unreachable()
     }
     return nil
 }
 
 eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
     switch expr in expression.un {
-        case Lit_Nil:
-            return nil
-        case Lit_String:
-            return expr.value
-        case Lit_Template:
-            return eval_template(ctx, env, expression.loc, expr.value)
-        case Lit_Int:
-            return expr.value
-        case Identifier:
-            value := env_get(env, expr.name)
-            if value, ok := value.?; ok {
-                return value
-            }
-            script_errorf(ctx, expression.loc, "Value %s is not defined in the current scope", expr.name)
-        case Expr_Unary:
-            switch expr.op {
-                case .Not:
-                    val := eval_expr(ctx, env, expr.expr)
-                    return ! value_to_bool(val)
-            }
-            unreachable()
-        case Expr_Binary:
-            if expr.op == .Assign {
-                if ident, ok := expr.lhs.un.(Identifier); ok {
-                    new_value := eval_expr(ctx, env, expr.rhs)
-                    env_set(env, ident.name, new_value)
-                } else {
-                    value := eval_expr(ctx, env, expr.rhs)
-                    target := eval_expr(ctx, env, expr.lhs)
-                    if !value_is_ref(target) {
-                        script_errorf(ctx, expression.loc, "Assignment target is not an lvalue")
-                    }
-                    target.(^Value)^ = value_deref(value)
-                }
-                return nil
-            }
-            lhs := value_deref(eval_expr(ctx, env, expr.lhs))
-            rhs := value_deref(eval_expr(ctx, env, expr.rhs))
-            return eval_binary_op(ctx, expression.loc, expr.op, lhs, rhs)
-        case Expr_Ternary:
-            switch expr.op {
-            }
-            unreachable()
-        case Expr_Call:
-            evaluated_args := make([dynamic]Value)
-            for arg in expr.args {
-                append(&evaluated_args, value_deref(eval_expr(ctx, env, arg)))
-            }
-            mb_val := env_get(env, expr.fn.name)
-            func := Stmt_Func{}
-            if val, ok := mb_val.?; !ok {
-                script_errorf(ctx, expression.loc, "Value %s is not defined", expr.fn.name)
-            } else if fn, ok := val.(Stmt_Func); ok {
-                ret, err := call_func(ctx, env, fn, evaluated_args[:])
-                if tok, ok := err.(Call_Func_Err_CF_Token); ok {
-                    script_errorf(ctx, expression.loc, "Cotrol flow statement used outside of while loop: %v", tok)
-                } else if _, ok := err.(Call_Func_Err_Param_Mismatch); ok {
-                    script_errorf(ctx, expression.loc, "Argument count mismatch: expected %d, got %d", len(func.params), len(evaluated_args))
-                } else {
-                    return ret
-                }
-            } else if fn, ok := val.(Builtin_Func); ok {
-                return fn(ctx, evaluated_args[:])
+    case Lit_Nil:
+        return nil
+    case Lit_String:
+        return expr.value
+    case Lit_Template:
+        return eval_template(ctx, env, expression.loc, expr.value)
+    case Lit_Int:
+        return expr.value
+    case Identifier:
+        value := env_get(env, expr.name)
+        if value, ok := value.?; ok {
+            return value
+        }
+        script_errorf(ctx, expression.loc, "Value %s is not defined in the current scope", expr.name)
+    case Expr_Unary:
+        switch expr.op {
+        case .Not:
+            val := eval_expr(ctx, env, expr.expr)
+            return ! value_to_bool(val)
+        }
+        unreachable()
+    case Expr_Binary:
+        if expr.op == .Assign {
+            if ident, ok := expr.lhs.un.(Identifier); ok {
+                new_value := eval_expr(ctx, env, expr.rhs)
+                env_set(env, ident.name, new_value)
             } else {
-                script_errorf(ctx, expression.loc, "Value %s is not callable")
+                value := eval_expr(ctx, env, expr.rhs)
+                target := eval_expr(ctx, env, expr.lhs)
+                if !value_is_ref(target) {
+                    script_errorf(ctx, expression.loc, "Assignment target is not an lvalue")
+                }
+                target.(^Value)^ = value_deref(value)
             }
-        case Expr_Array:
-            values := make([dynamic]Value)
-            for e in expr.exprs {
-                append(&values, eval_expr(ctx, env, e))
+            return nil
+        }
+        lhs := value_deref(eval_expr(ctx, env, expr.lhs))
+        rhs := value_deref(eval_expr(ctx, env, expr.rhs))
+        return eval_binary_op(ctx, expression.loc, expr.op, lhs, rhs)
+    case Expr_Ternary:
+        switch expr.op {
+        }
+        unreachable()
+    case Expr_Call:
+        evaluated_args := make([dynamic]Value)
+        for arg in expr.args {
+            append(&evaluated_args, value_deref(eval_expr(ctx, env, arg)))
+        }
+        mb_val := env_get(env, expr.fn.name)
+        func := Stmt_Func{}
+        if val, ok := mb_val.?; !ok {
+            script_errorf(ctx, expression.loc, "Value %s is not defined", expr.fn.name)
+        } else if fn, ok := val.(Stmt_Func); ok {
+            ret, err := call_func(ctx, env, fn, evaluated_args[:])
+            if tok, ok := err.(Call_Func_Err_CF_Token); ok {
+                script_errorf(ctx, expression.loc, "Cotrol flow statement used outside of while loop: %v", tok)
+            } else if _, ok := err.(Call_Func_Err_Param_Mismatch); ok {
+                script_errorf(ctx, expression.loc, "Argument count mismatch: expected %d, got %d", len(func.params), len(evaluated_args))
+            } else {
+                return ret
             }
-            return values[:]
-        case Expr_Dict:
-            vm := make(map[string]Value)
-            for i in 0 ..< len(expr.names) {
-                vm[expr.names[i].name] = eval_expr(ctx, env, expr.values[i])
-            }
-            return vm
-        case: unreachable()
+        } else if fn, ok := val.(Builtin_Func); ok {
+            return fn(ctx, evaluated_args[:])
+        } else {
+            script_errorf(ctx, expression.loc, "Value %s is not callable")
+        }
+    case Expr_Array:
+        values := make([dynamic]Value)
+        for e in expr.exprs {
+            append(&values, eval_expr(ctx, env, e))
+        }
+        return values[:]
+    case Expr_Dict:
+        vm := make(map[string]Value)
+        for i in 0 ..< len(expr.names) {
+            vm[expr.names[i].name] = eval_expr(ctx, env, expr.values[i])
+        }
+        return vm
+    case: unreachable()
     }
 }
 
@@ -370,9 +370,9 @@ call_func :: proc(ctx: ^Ctx, env: ^Env, fn: Stmt_Func, args: []Value) -> (Value,
     loopin_stmts: for stmt in stmts {
         cf_token := exec_stmt(ctx, env, stmt)
         switch cf_token {
-            case .Break, .Continue: return nil, Call_Func_Err_CF_Token {cf_token}
-            case .Return: break loopin_stmts
-            case .None:
+        case .Break, .Continue: return nil, Call_Func_Err_CF_Token {cf_token}
+        case .Return: break loopin_stmts
+        case .None:
         }
     }
     return pop(&ctx.ret_stack), nil

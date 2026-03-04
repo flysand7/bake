@@ -312,7 +312,7 @@ parser_token_next :: proc(p: ^Parser) {
             parser_char_is_range(p, 'A', 'Z') ||
             parser_char_is_range(p, '0', '9') ||
             parser_char_is(p, '_') ||
-            parser_char_is(p, '-')
+            parser_char_is(p, '-') \
         {
             parser_char_next(p)
         }
@@ -321,7 +321,7 @@ parser_token_next :: proc(p: ^Parser) {
         }
     } else if parser_char_is_range(p, '0', '9') {
         for parser_char_is_range(p, '0', '9') ||
-            parser_char_is(p, '_')
+            parser_char_is(p, '_') \
         {
             parser_char_next(p)
         }
@@ -806,10 +806,10 @@ parse_expr4 :: proc(p: ^Parser) -> ^Expr {
             rhs := parse_expr3(p)
             bop := Binary_Op(nil)
             switch op {
-                case "and":     bop = .And
-                case "or":      bop = .Or
-                case "xor":     bop = .Xor
-                case "implies": bop = .Implies
+            case "and":     bop = .And
+            case "or":      bop = .Or
+            case "xor":     bop = .Xor
+            case "implies": bop = .Implies
             }
             lhs = expr_make_binary_op(bop, lhs, rhs)
         }
@@ -839,129 +839,129 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
     if ident, ok := tok.un.(Identifier); ok {
         kw := ident.name
         switch kw {
-            case "if":
+        case "if":
+            parser_token_next(p)
+            cond := parse_expr(p)
+            branch_t := parse_stmt(p)
+            branch_f := cast(^Stmt) (nil)
+            if ident, ok := parser_token_is(p, Identifier); ok && ident.name == "else" {
                 parser_token_next(p)
-                cond := parse_expr(p)
-                branch_t := parse_stmt(p)
-                branch_f := cast(^Stmt) (nil)
-                if ident, ok := parser_token_is(p, Identifier); ok && ident.name == "else" {
-                    parser_token_next(p)
-                    branch_f = parse_stmt(p)
+                branch_f = parse_stmt(p)
+            }
+            return stmt_make(cond.loc, Stmt_If {
+                cond = cond,
+                branch_t = branch_t,
+                branch_f = branch_f,
+            })
+        case "for":
+            parser_token_next(p)
+            cond := parse_expr(p)
+            stmts := parse_stmt_block(p)
+            expect_1_skip_newlines(p)
+            return stmt_make(merge_locs(cond.loc, stmts.loc), Stmt_For {
+                cond = cond,
+                body = stmts,
+            })
+        case "let":
+            l := p.token.loc
+            parser_token_next(p)
+            if ident, ok := parser_token_is(p, Identifier); ok {
+                parser_token_next(p)
+                expr := cast(^Expr) nil
+                if parser_op_match(p, .Assign) {
+                    expr = parse_expr(p)
                 }
-                return stmt_make(cond.loc, Stmt_If {
-                    cond = cond,
-                    branch_t = branch_t,
-                    branch_f = branch_f,
-                })
-            case "for":
-                parser_token_next(p)
-                cond := parse_expr(p)
-                stmts := parse_stmt_block(p)
                 expect_1_skip_newlines(p)
-                return stmt_make(merge_locs(cond.loc, stmts.loc), Stmt_For {
-                    cond = cond,
-                    body = stmts,
-                })
-            case "let":
-                l := p.token.loc
-                parser_token_next(p)
-                if ident, ok := parser_token_is(p, Identifier); ok {
-                    parser_token_next(p)
-                    expr := cast(^Expr) nil
-                    if parser_op_match(p, .Assign) {
-                        expr = parse_expr(p)
-                    }
-                    expect_1_skip_newlines(p)
-                    return stmt_make(merge_locs(l, expr.loc), Stmt_Decl {
-                        mutable = false,
-                        name = ident,
-                        value = expr,
-                    })
-                } else {
-                    parse_errorf(p, l, "Expected an identifier after a let declaration")
-                }
-            case "var":
-                l := p.token.loc
-                parser_token_next(p)
-                if ident, ok := parser_token_is(p, Identifier); ok {
-                    parser_token_next(p)
-                    expr := cast(^Expr) nil
-                    if parser_op_match(p, Token_Operator.Assign) {
-                        expr = parse_expr(p)
-                    }
-                    expect_1_skip_newlines(p)
-                    return stmt_make(merge_locs(l, expr.loc), Stmt_Decl {
-                        mutable = false,
-                        name = ident,
-                        value = expr,
-                    })
-                } else {
-                    parse_errorf(p, l, "Expected an identifier after a var declaration")
-                }
-            case "func":
-                l := p.token.loc
-                parser_token_next(p)
-                is_cli := false
-                if str, ok := parser_token_match(p, Lit_String); ok {
-                    if str.value != "cli" {
-                        parse_errorf(p, p.token.loc, "String after 'func' keyword can only be 'cli'")
-                    }
-                    is_cli = true
-                }
-                ident := parser_token_expect(p, Identifier)
-                lparen_loc := p.token.loc
-                parser_op_expect(p, .LParen)
-                skip_newline(p)
-                ops := make([dynamic]Func_Param)
-                parse_next_ok := true
-                for !parser_op_match(p, .RParen) {
-                    if !parse_next_ok {
-                        parse_errorf(p, p.token.loc, "Expected ',' to separate function parameter list")
-                    }
-                    if p.token.un == nil {
-                        parse_errorf(p, lparen_loc, "'(' is not terminated by ')'")
-                    }
-                    name: Identifier
-                    loc := p.token.loc
-                    if ident, ok := p.token.un.(Identifier); ok {
-                        name = ident
-                    } else {
-                        parse_errorf(p, p.token.loc, "Parameter name must be an identifier")
-                    }
-                    parser_token_next(p)
-                    append(&ops, Func_Param {
-                        loc = loc,
-                        name = name,
-                    })
-                    if !parser_op_match(p, .Comma) {
-                        parse_next_ok = false
-                    }
-                }
-                l2 := p.token.loc
-                body := parse_stmt_block(p)
-                expect_1_skip_newlines(p)
-                return stmt_make(merge_locs(l, l2), Stmt_Func {
-                    is_cli = is_cli,
+                return stmt_make(merge_locs(l, expr.loc), Stmt_Decl {
+                    mutable = false,
                     name = ident,
-                    body = body,
-                    params = ops[:],
+                    value = expr,
                 })
-            case "return":
-                loc := p.token.loc
+            } else {
+                parse_errorf(p, l, "Expected an identifier after a let declaration")
+            }
+        case "var":
+            l := p.token.loc
+            parser_token_next(p)
+            if ident, ok := parser_token_is(p, Identifier); ok {
                 parser_token_next(p)
-                expr := parse_expr(p)
+                expr := cast(^Expr) nil
+                if parser_op_match(p, Token_Operator.Assign) {
+                    expr = parse_expr(p)
+                }
                 expect_1_skip_newlines(p)
-                return stmt_make(merge_locs(loc, expr.loc), Stmt_Return {
-                    expr = expr,
+                return stmt_make(merge_locs(l, expr.loc), Stmt_Decl {
+                    mutable = false,
+                    name = ident,
+                    value = expr,
                 })
-            case "break":
+            } else {
+                parse_errorf(p, l, "Expected an identifier after a var declaration")
+            }
+        case "func":
+            l := p.token.loc
+            parser_token_next(p)
+            is_cli := false
+            if str, ok := parser_token_match(p, Lit_String); ok {
+                if str.value != "cli" {
+                    parse_errorf(p, p.token.loc, "String after 'func' keyword can only be 'cli'")
+                }
+                is_cli = true
+            }
+            ident := parser_token_expect(p, Identifier)
+            lparen_loc := p.token.loc
+            parser_op_expect(p, .LParen)
+            skip_newline(p)
+            ops := make([dynamic]Func_Param)
+            parse_next_ok := true
+            for !parser_op_match(p, .RParen) {
+                if !parse_next_ok {
+                    parse_errorf(p, p.token.loc, "Expected ',' to separate function parameter list")
+                }
+                if p.token.un == nil {
+                    parse_errorf(p, lparen_loc, "'(' is not terminated by ')'")
+                }
+                name: Identifier
                 loc := p.token.loc
+                if ident, ok := p.token.un.(Identifier); ok {
+                    name = ident
+                } else {
+                    parse_errorf(p, p.token.loc, "Parameter name must be an identifier")
+                }
                 parser_token_next(p)
-                return stmt_make(loc, Stmt_Break {})
-            case "continue":
-                loc := p.token.loc
-                parser_token_next(p)
-                return stmt_make(loc, Stmt_Continue {})
+                append(&ops, Func_Param {
+                    loc = loc,
+                    name = name,
+                })
+                if !parser_op_match(p, .Comma) {
+                    parse_next_ok = false
+                }
+            }
+            l2 := p.token.loc
+            body := parse_stmt_block(p)
+            expect_1_skip_newlines(p)
+            return stmt_make(merge_locs(l, l2), Stmt_Func {
+                is_cli = is_cli,
+                name = ident,
+                body = body,
+                params = ops[:],
+            })
+        case "return":
+            loc := p.token.loc
+            parser_token_next(p)
+            expr := parse_expr(p)
+            expect_1_skip_newlines(p)
+            return stmt_make(merge_locs(loc, expr.loc), Stmt_Return {
+                expr = expr,
+            })
+        case "break":
+            loc := p.token.loc
+            parser_token_next(p)
+            return stmt_make(loc, Stmt_Break {})
+        case "continue":
+            loc := p.token.loc
+            parser_token_next(p)
+            return stmt_make(loc, Stmt_Continue {})
         }
     } else if parser_op_is(p, .LBrace) {
         return parse_stmt_block(p)

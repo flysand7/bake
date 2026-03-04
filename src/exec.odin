@@ -10,13 +10,13 @@ Exec_Error :: enum {
 
 run_cmd :: proc(command: Cmd) -> (int, Exec_Error) {
     switch cmd in command {
-        case Builtin_Cmd:
-            return cmd.execute(cmd.args), .None
-        case string:
-            // TODO(flysand): Support string cmdline arguments to run_cmd.
-            panic("Running via cmdline is temporarily not supported")
-        case []string:
-            return run_system_cmd(cmd)
+    case Builtin_Cmd:
+        return cmd.execute(cmd.args), .None
+    case string:
+        // TODO(flysand): Support string cmdline arguments to run_cmd.
+        panic("Running via cmdline is temporarily not supported")
+    case []string:
+        return run_system_cmd(cmd)
     }
     unreachable()
 }
