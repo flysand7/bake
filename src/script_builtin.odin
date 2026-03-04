@@ -1,6 +1,23 @@
 package bake
 
+import "core:os"
 import "core:fmt"
+
+intrinsic_assert :: proc(loc: Loc, text: string, args: []Value) {
+    if len(args) < 1 || len(args) > 2 {
+        panic("assert(cond, message?) accepts at least one argument but no more than two")
+    }
+    cond := args[0].(bool)
+    message := "Assertion failed."
+    if len(args) == 2 {
+        message = args[1].(string)
+    }
+    if !cond {
+        line, col := loc_extract_line_col(loc.offs, text)
+        fmt.eprintfln("%s(%d, %d): %s", "Assertion failed", line, col, message)
+        os.exit(1)
+    }
+}
 
 builtin_print :: proc(ctx: ^Ctx, args: []Value) -> Value {
     for arg in args {

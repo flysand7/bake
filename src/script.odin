@@ -312,6 +312,10 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
         for arg in expr.args {
             append(&evaluated_args, value_deref(eval_expr(ctx, env, arg)))
         }
+        if expr.fn.name == "assert" {
+            intrinsic_assert(expression.loc, ctx.text, evaluated_args[:])
+            return nil
+        }
         mb_val := env_get(env, expr.fn.name)
         func := Stmt_Func{}
         if val, ok := mb_val.?; !ok {
