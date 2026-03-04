@@ -28,3 +28,11 @@ that you have Odin. Then run the following command:
 ```sh
 odin build src -out:bake.exe
 ```
+
+## Documentation
+
+You can obtain the detailed documentation from the following sources:
+
+* [Bake Language Reference](/doc/bake-language-reference.md) - Contains
+  information about the Bake programming language -- the language used to write
+  bakefiles.
