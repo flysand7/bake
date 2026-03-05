@@ -716,7 +716,6 @@ parse_expr_not_so_simple :: proc (p: ^Parser) -> ^Expr {
 
 parse_expr_unary :: proc(p: ^Parser) -> ^Expr {
     if parser_op_match(p, .Not) {
-        parser_token_next(p)
         expr := parse_expr_not_so_simple(p)
         return expr_make_unary_op(.Not, expr)
     }
