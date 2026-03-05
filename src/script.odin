@@ -312,6 +312,10 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
         for arg in expr.args {
             append(&evaluated_args, value_deref(eval_expr(ctx, env, arg)))
         }
+        if expr.fn.name == "assert" {
+            intrinsic_assert(expression.loc, ctx.text, evaluated_args[:])
+            return nil
+        }
         mb_val := env_get(env, expr.fn.name)
         func := Stmt_Func{}
         if val, ok := mb_val.?; !ok {
@@ -404,7 +408,7 @@ eval_binary_op :: proc(
         case .Implies:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
-            return b1 && !b2
+            return b1 || !b2
         case .Add:
             if value_is_int(lhs) && value_is_int(rhs) {
                 return lhs.(i64) + rhs.(i64)

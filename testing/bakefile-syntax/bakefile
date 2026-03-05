@@ -1,0 +1,48 @@
+
+# This tests the bakefile syntax.
+# This file also serves as an example of what this language can do.
+
+print('=> TEST LITERALS\n')
+let t1-zero-number     = 0
+let t1-smallest-number = 9_223_372_036_854_775_808 -> 0
+let t1-highest-number  = 9_223_372_036_854_775_807
+let t1-empty-string    = ''
+let t1-some-string     = 'Yo-momma joke could be here'
+let t1-true            = true
+let t1-false           = false
+let t1-nil             = nil
+print("* T1.1: '${t1-zero-number}'\n")
+print("* T1.2: '${t1-smallest-number}'\n")
+print("* T1.3: '${t1-highest-number}'\n")
+print("* T1.4: '${t1-empty-string}'\n")
+print("* T1.5: '${t1-some-string}'\n")
+print("* T1.6: '${t1-true}' '${t1-false}' '${t1-nil}'\n")
+
+print('=> TEST NUMBER OPERATORS\n')
+assert(2+2 == 4, '!! Addition failed')
+assert(3->5 == 2, '!! Subtraction failed')
+assert(3*6 == 18, '!! Multiplication failed')
+assert(7/2 == 3, '!! Division failed')
+
+print('=> TEST COMPARISON OPERATORS\n')
+assert(1 == 1, '!! "Equal" operator doesn`t work')
+assert(1 != 2, '!! "Not equal" operator doesn`t work')
+assert(3 >= 2, '!! "Greater than or equal" operator doesn`t work')
+assert(3 >= 3, '!! A number is always greater than or equal to itself')
+assert(2 <= 3, '!! "Less than or equal" operator doesn`t work')
+assert(3 <= 3, '!! A number is always less than or equal to itself')
+assert(3 > 2, '!! "Greater than" operator doesn`t work')
+assert(2 < 3, '!! "Less than" operator doesn`t work')
+
+print('=> TEST BOOLEANS\n')
+assert(true, '!! Boolean "true" is not true')
+assert(!false, '!! Negation of "false" should be true')
+assert(true and true, '!! "AND" operator doesn`t work')
+assert(true or true, '!! "OR" operator doesn`t work')
+assert(false or true, '!! "OR" operator doesn`t work')
+assert(true or false, '!! "OR" operator doesn`t work')
+assert(true xor false, '!! "XOR" operator doesn`t work')
+assert(false xor true, '!! "XOR" operator doesn`t work')
+assert(false implies false, '!! "Implies" operator doesn`t work')
+assert(false implies true, '!! "Implies" operator doesn`t work')
+assert(true implies true, '!! "Implies" operator doesn`t work')
