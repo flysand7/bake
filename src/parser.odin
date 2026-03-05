@@ -1,5 +1,6 @@
 package bake
 
+import "core:fmt"
 import "base:intrinsics"
 import "core:unicode/utf8"
 import "core:strconv"
@@ -812,6 +813,8 @@ parse_expr4 :: proc(p: ^Parser) -> ^Expr {
             case "implies": bop = .Implies
             }
             lhs = expr_make_binary_op(bop, lhs, rhs)
+        } else {
+            break
         }
     }
     return lhs
