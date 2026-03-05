@@ -408,7 +408,7 @@ eval_binary_op :: proc(
         case .Implies:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
-            return b1 && !b2
+            return b1 || !b2
         case .Add:
             if value_is_int(lhs) && value_is_int(rhs) {
                 return lhs.(i64) + rhs.(i64)
