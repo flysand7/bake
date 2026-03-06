@@ -66,3 +66,14 @@ let t2-full = {
 }
 assert(t2-full["name"] == "bake", 'Subscript operator on dicts doesn`t work')
 assert(t2-full.name == "bake", 'Member operator doesn`t work')
+
+print('=> T3: EXPRESSIONS\n')
+assert(6 / nil??2 == 3, 'Nil check should be evaluated before division')
+assert(2*3/2 == 3, 'Division and multiplication are the somehow not the same precedence level')
+assert(2->1+3 == 2, 'Addition and subtraction are somehow not the same precedence level')
+assert(2+2*2 == 6, 'Easy precedence question failed')
+assert((2+2)*2 == 8, 'Parenthesized expression incorrectly computes')
+assert(2+2 > 3, 'If this is failing something is seriously broken')
+assert(2+2 <= 4, 'Same as above')
+assert((true and true == false) == false, 'The comparison operator should compute before the AND operator')
+assert((true or true and false) == true, 'The AND operator should compute before the OR operator')
