@@ -794,23 +794,31 @@ parse_expr3 :: proc(p: ^Parser) -> ^Expr {
 parse_expr4 :: proc(p: ^Parser) -> ^Expr {
     lhs := parse_expr3(p)
     for {
-        op: string
-        if ident, ok := p.token.un.(Identifier); !ok {
-            break
-        } else {
-            op = ident.name
-        }
-        if op == "and" || op == "or" || op == "xor" || op == "implies" {
+        if ident, ok := parser_token_is(p, Identifier); ok && ident.name == "and" {
             parser_token_next(p)
             skip_newline(p)
             rhs := parse_expr3(p)
+            lhs = expr_make_binary_op(.And, lhs, rhs)
+        } else {
+            break
+        }
+    }
+    return lhs
+}
+
+parse_expr5 :: proc(p: ^Parser) -> ^Expr {
+    lhs := parse_expr4(p)
+    parse_ops: for {
+        if ident, ok := parser_token_is(p, Identifier); ok {
             bop := Binary_Op(nil)
-            switch op {
-            case "and":     bop = .And
-            case "or":      bop = .Or
-            case "xor":     bop = .Xor
-            case "implies": bop = .Implies
+            switch ident.name {
+            case "or":  bop = .Or
+            case "xor": bop = .Xor
+            case: break parse_ops
             }
+            parser_token_next(p)
+            skip_newline(p)
+            rhs := parse_expr4(p)
             lhs = expr_make_binary_op(bop, lhs, rhs)
         } else {
             break
@@ -819,8 +827,23 @@ parse_expr4 :: proc(p: ^Parser) -> ^Expr {
     return lhs
 }
 
+parse_expr6 :: proc(p: ^Parser) -> ^Expr {
+    lhs := parse_expr5(p)
+    parse_ops: for {
+        if ident, ok := parser_token_is(p, Identifier); ok && ident.name == "implies" {
+            parser_token_next(p)
+            skip_newline(p)
+            rhs := parse_expr5(p)
+            lhs = expr_make_binary_op(.Implies, lhs, rhs)
+        } else {
+            break
+        }
+    }
+    return lhs
+}
+
 parse_expr :: proc(p: ^Parser) -> ^Expr {
-    return parse_expr4(p)
+    return parse_expr6(p)
 }
 
 parse_expr_toplevel :: proc(p: ^Parser) -> ^Expr {

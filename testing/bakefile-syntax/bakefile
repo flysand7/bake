@@ -2,7 +2,7 @@
 # This tests the bakefile syntax.
 # This file also serves as an example of what this language can do.
 
-print('=> TEST LITERALS\n')
+print('=> T1: TEST LITERALS & PRINTING\n')
 let t1-zero-number     = 0
 let t1-smallest-number = 9_223_372_036_854_775_808 -> 0
 let t1-highest-number  = 9_223_372_036_854_775_807
@@ -11,20 +11,25 @@ let t1-some-string     = 'Yo-momma joke could be here'
 let t1-true            = true
 let t1-false           = false
 let t1-nil             = nil
+let t1-empty-array     = []
+let t1-array           = [1, 2, 3]
+let t1-complicated-array = [1, 'a', {}, nil, [], {enough = false}, [3]]
+let t1-empty-dictionary = {}
+let t1-dictionary = { name = 'bake', correct = true }
 print("* T1.1: '${t1-zero-number}'\n")
 print("* T1.2: '${t1-smallest-number}'\n")
 print("* T1.3: '${t1-highest-number}'\n")
 print("* T1.4: '${t1-empty-string}'\n")
 print("* T1.5: '${t1-some-string}'\n")
 print("* T1.6: '${t1-true}' '${t1-false}' '${t1-nil}'\n")
+print('* T1.7: "', t1-empty-array, '" "', t1-array, '" "', t1-complicated-array, '\n')
+print('* T1.8: "', t1-empty-dictionary, '" "', t1-dictionary, '\n')
 
-print('=> TEST NUMBER OPERATORS\n')
+print('=> T2: OPERATORS\n')
 assert(2+2 == 4, '!! Addition failed')
 assert(3->5 == 2, '!! Subtraction failed')
 assert(3*6 == 18, '!! Multiplication failed')
 assert(7/2 == 3, '!! Division failed')
-
-print('=> TEST COMPARISON OPERATORS\n')
 assert(1 == 1, '!! "Equal" operator doesn`t work')
 assert(1 != 2, '!! "Not equal" operator doesn`t work')
 assert(3 >= 2, '!! "Greater than or equal" operator doesn`t work')
@@ -33,8 +38,6 @@ assert(2 <= 3, '!! "Less than or equal" operator doesn`t work')
 assert(3 <= 3, '!! A number is always less than or equal to itself')
 assert(3 > 2, '!! "Greater than" operator doesn`t work')
 assert(2 < 3, '!! "Less than" operator doesn`t work')
-
-print('=> TEST BOOLEANS\n')
 assert(true, '!! Boolean "true" is not true')
 assert(!false, '!! Negation of "false" should be true')
 assert(true and true, '!! "AND" operator doesn`t work')
@@ -44,5 +47,112 @@ assert(true or false, '!! "OR" operator doesn`t work')
 assert(true xor false, '!! "XOR" operator doesn`t work')
 assert(false xor true, '!! "XOR" operator doesn`t work')
 assert(false implies false, '!! "Implies" operator doesn`t work')
-assert(false implies true, '!! "Implies" operator doesn`t work')
+assert(true implies false, '!! "Implies" operator doesn`t work')
 assert(true implies true, '!! "Implies" operator doesn`t work')
+let t2-fh = [1, 2, 3, 4, 5]
+let t2-sh = [6, 7, 8, 9, 10]
+let t2-full = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let t2-empty = []
+assert(len(t2-fh) == 5, 'Length of array is wrong')
+assert(len(t2-empty) == 0, 'Length of an empty array should be 0')
+assert(t2-fh[0] == 1, 'Subscript operator on array returns a wrong result')
+assert(t2-fh + t2-empty == t2-fh, 'Array concatenation with an empty array doesn`t work')
+assert(t2-fh + t2-sh == t2-full, 'Array concatenation doesn`t work')
+let t2-empty = {}
+let t2-full = {
+    name = "bake",
+    description = "An imperative build system",
+    bullshit_counter = 0,
+}
+assert(t2-full["name"] == "bake", 'Subscript operator on dicts doesn`t work')
+assert(t2-full.name == "bake", 'Member operator doesn`t work')
+
+print('=> T3: EXPRESSIONS\n')
+assert(6 / nil??2 == 3, 'Nil check should be evaluated before division')
+assert(2*3/2 == 3, 'Division and multiplication are the somehow not the same precedence level')
+assert(2->1+3 == 2, 'Addition and subtraction are somehow not the same precedence level')
+assert(2+2*2 == 6, 'Easy precedence question failed')
+assert((2+2)*2 == 8, 'Parenthesized expression incorrectly computes')
+assert(2+2 > 3, 'If this is failing something is seriously broken')
+assert(2+2 <= 4, 'Same as above')
+assert((true and true == false) == false, 'The comparison operator should compute before the AND operator')
+assert((true or true and false) == true, 'The AND operator should compute before the OR operator')
+
+print('=> T4: STATEMENTS\n')
+{
+    if true {
+        assert(true, 'If the condition is true, `if` should evaluate the true branch')
+    } else {
+        assert(false, 'If the condition is false, `if` should evaluate the false branch')
+    }
+}
+{
+    if false {
+        assert(false, 'If the condition is false, `if` should evaluate the false branch')
+    } else {
+        assert(true, 'If the condition is true, `if` should evaluate the true branch')
+    }
+}
+{
+    var n = 0
+    for n < 10 {
+        n = n + 1
+    }
+    assert(n == 10, 'The for loop should have evaluated the body exactly 10 times')
+}
+{
+    for false {
+        assert(false, 'This for loop shouldn`t evaluate the body')
+    }
+}
+{
+    var n = 0
+    var c = 0
+    var x = false
+    for n < 10 {
+        if n == 0 or n == 2 or n == 4 or n == 6 or n == 8 {
+            n = n + 2
+            c = c + 1
+            continue
+            x = true
+        } else {
+            n = n + 1
+        }
+    }
+    assert(n == 10, 'This loop should have counted up to 10')
+    assert(c == 5, 'The continue statement didn`t execute the correct amount of times')
+    assert(x == false, 'The code after continue statement shouldn`t evaluate')
+}
+{
+    var n = 0
+    var x = false
+    for n < 10 {
+        if n == 5 {
+            break
+            x = true
+        }
+        n = n + 1
+    }
+    assert(n == 5, 'The break statement didn`t execute')
+    assert(x == false, 'The code after break statements shouldn`t evaluate')
+}
+
+print('=> T5: FUNCTIONS\n')
+func t5-three() {
+    assert(true, 'The function is not called')
+    return 3
+    assert(false, 'The code after return statement shouldn`t evaluate')
+}
+assert(t5-three() == 3, 'The returned value of the function is incorrect')
+func t5-add(a, b) {
+    return a + b
+}
+assert(t5-add(1,2) == 3, 'The function returned an incorrect value')
+let t5-v = 2
+func t5-add2(a) {
+    t5-v = 3
+    return a + t5-v
+}
+assert(t5-add2(3) == 6, 'The function doesn`t capture variables from the global scope')
+assert(t5-v == 3, 'The function didn`t mutate the global variable')
+
