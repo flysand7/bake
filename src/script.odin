@@ -9,7 +9,6 @@ Builtin_Func :: #type proc (ctx: ^Ctx, args: []Value) -> Value
 Value :: union {
     i64,
     string,
-    bool,
     Stmt_Func,
     Builtin_Func,
     []Value,
@@ -74,7 +73,7 @@ value_is_str :: proc(v: Value) -> bool {
 
 value_is_bool :: proc(v: Value) -> bool {
     v := value_deref(v)
-    if _, ok := v.(bool); ok {
+    if _, ok := v.(i64); ok {
         return true
     }
     return false
@@ -130,7 +129,6 @@ value_to_str :: proc(value: Value) -> (string, bool) {
     value := value_deref(value)
     #partial switch v in value {
         case nil:    return "", true
-        case bool:   return v? "true" : "false", true
         case i64:    return fmt.tprint(v), true
         case string: return v, true
         case: return "", false
@@ -141,7 +139,6 @@ value_to_bool :: proc(value: Value) -> bool {
     value := value_deref(value)
     #partial switch v in value {
         case nil: return false
-        case bool: return v
         case i64: return v != 0
         case string: return v != ""
         case []Value: return len(v) != 0
@@ -282,7 +279,7 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
         switch expr.op {
         case .Not:
             val := eval_expr(ctx, env, expr.expr)
-            return ! value_to_bool(val)
+            return i64(!value_to_bool(val))
         }
         unreachable()
     case Expr_Binary:
@@ -396,19 +393,19 @@ eval_binary_op :: proc(
         case .And:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
-            return b1 && b2
+            return i64(b1 && b2)
         case .Or:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
-            return b1 || b2
+            return i64(b1 || b2)
         case .Xor:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
-            return b1 ~~ b2
+            return i64(b1 ~~ b2)
         case .Implies:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
-            return b1 || !b2
+            return i64(b1 || !b2)
         case .Add:
             if value_is_int(lhs) && value_is_int(rhs) {
                 return lhs.(i64) + rhs.(i64)
@@ -455,25 +452,25 @@ eval_binary_op :: proc(
         case .Eq:
             if !value_is_nil(lhs) && !value_is_nil(rhs) {
                 if value_is_int(lhs) && value_is_int(rhs) {
-                    return lhs.(i64) == rhs.(i64)
+                    return i64(lhs.(i64) == rhs.(i64))
                 } if value_is_arr(lhs) && value_is_arr(rhs) {
                     lhs_arr := lhs.([]Value)
                     rhs_arr := rhs.([]Value)
                     if len(lhs_arr) != len(rhs_arr) {
-                        return false
+                        return 0
                     }
                     for i in 0 ..< len(lhs_arr) {
                         eq := eval_binary_op(ctx, op_loc, .Eq, lhs_arr[i], rhs_arr[i])
-                        if !eq.(bool) {
-                            return false
+                        if !value_to_bool(eq) {
+                            return 0
                         }
                     }
-                    return true
+                    return 1
                 } else if value_is_str(lhs) || value_is_str(rhs) {
                     lhs_s, lhs_ok := value_to_str(lhs)
                     rhs_s, rhs_ok := value_to_str(rhs)
                     if lhs_ok && rhs_ok {
-                        return lhs_s == rhs_s
+                        return i64(lhs_s == rhs_s)
                     } else {
                         script_errorf(ctx, op_loc, "Operation '==' does not work for provided types")
                     }
@@ -481,30 +478,30 @@ eval_binary_op :: proc(
                     script_errorf(ctx, op_loc, "Operation '==' does not work for provided types")
                 }
             } else {
-                return value_is_nil(lhs) == value_is_nil(rhs)
+                return i64(value_is_nil(lhs) == value_is_nil(rhs))
             }
         case .Ne:
             if !value_is_nil(lhs) && !value_is_nil(rhs) {
                 if value_is_int(lhs) && value_is_int(rhs) {
-                    return lhs.(i64) != rhs.(i64)
+                    return i64(lhs.(i64) != rhs.(i64))
                 } if value_is_arr(lhs) && value_is_arr(rhs) {
                     lhs_arr := lhs.([]Value)
                     rhs_arr := rhs.([]Value)
                     if len(lhs_arr) != len(rhs_arr) {
-                        return true
+                        return 1
                     }
                     for i in 0 ..< len(lhs_arr) {
                         eq := eval_binary_op(ctx, op_loc, .Eq, lhs_arr[i], rhs_arr[i])
-                        if !eq.(bool) {
-                            return true
+                        if !value_to_bool(eq) {
+                            return 1
                         }
                     }
-                    return false
+                    return 0
                 } else if value_is_str(lhs) || value_is_str(rhs) {
                     lhs_s, lhs_ok := value_to_str(lhs)
                     rhs_s, rhs_ok := value_to_str(rhs)
                     if lhs_ok && rhs_ok {
-                        return lhs_s != rhs_s
+                        return i64(lhs_s != rhs_s)
                     } else {
                         script_errorf(ctx, op_loc, "Operation '!=' does not work for provided types")
                     }
@@ -512,19 +509,19 @@ eval_binary_op :: proc(
                     script_errorf(ctx, op_loc, "Operation '!=' does not work for provided types")
                 }
             } else {
-                return value_is_nil(lhs) != value_is_nil(rhs)
+                return i64(value_is_nil(lhs) != value_is_nil(rhs))
             }
         case .Ge:
             if value_is_nil(lhs) || value_is_nil(rhs) {
                 return false
             }
             if value_is_int(lhs) && value_is_int(rhs) {
-                return lhs.(i64) >= rhs.(i64)
+                return i64(lhs.(i64) >= rhs.(i64))
             } else if value_is_str(lhs) || value_is_str(rhs) {
                 lhs_s, lhs_ok := value_to_str(lhs)
                 rhs_s, rhs_ok := value_to_str(rhs)
                 if lhs_ok && rhs_ok {
-                    return lhs_s >= rhs_s
+                    return i64(lhs_s >= rhs_s)
                 } else {
                     script_errorf(ctx, op_loc, "Operation '>=' does not work for provided types")
                 }
@@ -536,12 +533,12 @@ eval_binary_op :: proc(
                 return false
             }
             if value_is_int(lhs) && value_is_int(rhs) {
-                return lhs.(i64) > rhs.(i64)
+                return i64(lhs.(i64) > rhs.(i64))
             } else if value_is_str(lhs) || value_is_str(rhs) {
                 lhs_s, lhs_ok := value_to_str(lhs)
                 rhs_s, rhs_ok := value_to_str(rhs)
                 if lhs_ok && rhs_ok {
-                    return lhs_s > rhs_s
+                    return i64(lhs_s > rhs_s)
                 } else {
                     script_errorf(ctx, op_loc, "Operation '>' does not work for provided types")
                 }
@@ -553,12 +550,12 @@ eval_binary_op :: proc(
                 return false
             }
             if value_is_int(lhs) && value_is_int(rhs) {
-                return lhs.(i64) <= rhs.(i64)
+                return i64(lhs.(i64) <= rhs.(i64))
             } else if value_is_str(lhs) || value_is_str(rhs) {
                 lhs_s, lhs_ok := value_to_str(lhs)
                 rhs_s, rhs_ok := value_to_str(rhs)
                 if lhs_ok && rhs_ok {
-                    return lhs_s <= rhs_s
+                    return i64(lhs_s <= rhs_s)
                 } else {
                     script_errorf(ctx, op_loc, "Operation '<=' does not work for provided types")
                 }
@@ -570,12 +567,12 @@ eval_binary_op :: proc(
                 return false
             }
             if value_is_int(lhs) && value_is_int(rhs) {
-                return lhs.(i64) < rhs.(i64)
+                return i64(lhs.(i64) < rhs.(i64))
             } else if value_is_str(lhs) || value_is_str(rhs) {
                 lhs_s, lhs_ok := value_to_str(lhs)
                 rhs_s, rhs_ok := value_to_str(rhs)
                 if lhs_ok && rhs_ok {
-                    return lhs_s < rhs_s
+                    return i64(lhs_s < rhs_s)
                 } else {
                     script_errorf(ctx, op_loc, "Operation '<' does not work for provided types")
                 }
