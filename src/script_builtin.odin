@@ -11,11 +11,7 @@ intrinsic_assert :: proc(loc: Loc, text: string, args: []Value) {
     message := "Assertion failed."
     if len(args) == 2 {
         ok: bool
-        message, ok = value_to_str(args[1])
-        if !ok {
-            fmt.eprintfln("Assert expects a string argument")
-            os.exit(1)
-        }
+        message = value_to_str(args[1])
     }
     if !cond {
         line, col := loc_extract_line_col(loc.offs, text)
@@ -26,7 +22,7 @@ intrinsic_assert :: proc(loc: Loc, text: string, args: []Value) {
 
 builtin_print :: proc(ctx: ^Ctx, args: []Value) -> Value {
     for arg in args {
-        fmt.print(arg, sep="")
+        fmt.print(value_to_str(arg), sep="")
     }
     return nil
 }
@@ -41,10 +37,7 @@ builtin_cmd :: proc(ctx: ^Ctx, args: []Value) -> Value {
     }
     strings := make([dynamic]string)
     for arg in arr {
-        str, ok := value_to_str(arg)
-        if !ok {
-            panic("cmd(arr) One of the values doesn't cast to string")
-        }
+        str := value_to_str(arg)
         append(&strings, str)
     }
     code, err := run_cmd(strings[:])
@@ -95,25 +88,16 @@ builtin_recipe :: proc(ctx: ^Ctx, args: []Value) -> Value {
         }
         append(&cmd_arrs, make([]string, len(arr.([]Value))))
         for el, i in arr.([]Value) {
-            str, ok := value_to_str(el)
-            if !ok {
-                panic("task(cmd): Array element not castable to string")
-            }
+            str := value_to_str(el)
             cmd_arrs[idx].([]string)[i] = str
         }
     }
     for el in inputs.([]Value) {
-        str, ok := value_to_str(el)
-        if !ok {
-            panic("task(in): Array element not castable to string")
-        }
+        str := value_to_str(el)
         append(&inputs_strs, str)
     }
     for el in outputs.([]Value) {
-        str, ok := value_to_str(el)
-        if !ok {
-            panic("task(in): Array element not castable to string")
-        }
+        str := value_to_str(el)
         append(&outputs_strs, str)
     }
     append(&ctx.tasks, Recipe {
@@ -135,10 +119,7 @@ builtin_build :: proc(ctx: ^Ctx, args: []Value) -> Value {
     files_arr := files.([]Value)
     files_strs := make([dynamic]string)
     for v in files_arr {
-        str, ok := value_to_str(v)
-        if !ok {
-            panic("build(files) found a value no assignable to strings")
-        }
+        str := value_to_str(v)
         append(&files_strs, str)
     }
     build_files(ctx.tasks[:], files_strs[:])
