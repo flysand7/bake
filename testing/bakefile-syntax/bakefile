@@ -77,3 +77,62 @@ assert(2+2 > 3, 'If this is failing something is seriously broken')
 assert(2+2 <= 4, 'Same as above')
 assert((true and true == false) == false, 'The comparison operator should compute before the AND operator')
 assert((true or true and false) == true, 'The AND operator should compute before the OR operator')
+
+print('=> T4: STATEMENTS\n')
+{
+    if true {
+        assert(true, 'If the condition is true, `if` should evaluate the true branch')
+    } else {
+        assert(false, 'If the condition is false, `if` should evaluate the false branch')
+    }
+}
+{
+    if false {
+        assert(false, 'If the condition is false, `if` should evaluate the false branch')
+    } else {
+        assert(true, 'If the condition is true, `if` should evaluate the true branch')
+    }
+}
+{
+    var n = 0
+    for n < 10 {
+        n = n + 1
+    }
+    assert(n == 10, 'The for loop should have evaluated the body exactly 10 times')
+}
+{
+    for false {
+        assert(false, 'This for loop shouldn`t evaluate the body')
+    }
+}
+{
+    var n = 0
+    var c = 0
+    var x = false
+    for n < 10 {
+        if n == 0 or n == 2 or n == 4 or n == 6 or n == 8 {
+            n = n + 2
+            c = c + 1
+            continue
+            x = true
+        } else {
+            n = n + 1
+        }
+    }
+    assert(n == 10, 'This loop should have counted up to 10')
+    assert(c == 5, 'The continue statement didn`t execute the correct amount of times')
+    assert(x == false, 'The code after continue statement shouldn`t evaluate')
+}
+{
+    var n = 0
+    var x = false
+    for n < 10 {
+        if n == 5 {
+            break
+            x = true
+        }
+        n = n + 1
+    }
+    assert(n == 5, 'The break statement didn`t execute')
+    assert(x == false, 'The code after break statements shouldn`t evaluate')
+}
