@@ -136,3 +136,23 @@ print('=> T4: STATEMENTS\n')
     assert(n == 5, 'The break statement didn`t execute')
     assert(x == false, 'The code after break statements shouldn`t evaluate')
 }
+
+print('=> T5: FUNCTIONS\n')
+func t5-three() {
+    assert(true, 'The function is not called')
+    return 3
+    assert(false, 'The code after return statement shouldn`t evaluate')
+}
+assert(t5-three() == 3, 'The returned value of the function is incorrect')
+func t5-add(a, b) {
+    return a + b
+}
+assert(t5-add(1,2) == 3, 'The function returned an incorrect value')
+let t5-v = 2
+func t5-add2(a) {
+    t5-v = 3
+    return a + t5-v
+}
+assert(t5-add2(3) == 6, 'The function doesn`t capture variables from the global scope')
+assert(t5-v == 3, 'The function didn`t mutate the global variable')
+
