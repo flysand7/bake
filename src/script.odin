@@ -2,7 +2,6 @@ package bake
 
 import "core:fmt"
 import "core:strings"
-import "core:reflect"
 
 Builtin_Func :: #type proc (ctx: ^Ctx, args: []Value) -> Value
 
@@ -125,13 +124,49 @@ value_to_int :: proc(v: Value) -> (i64, bool) {
     }
 }
 
-value_to_str :: proc(value: Value) -> (string, bool) {
+value_to_str :: proc(value: Value) -> string {
     value := value_deref(value)
     #partial switch v in value {
-        case nil:    return "", true
-        case i64:    return fmt.tprint(v), true
-        case string: return v, true
-        case: return "", false
+        case nil:    return ""
+        case i64:    return fmt.tprint(v)
+        case string: return v
+        case []Value:
+            sb := strings.builder_make()
+            fmt.sbprint(&sb, "[")
+            for element, i in v {
+                if i != 0 {
+                    fmt.sbprintf(&sb, ", ")
+                }
+                if value_is_str(element) {
+                    // TODO(flysand, 2026-03-08): This needs a proper escaping
+                    // of the characters inside the string.
+                    fmt.sbprintf(&sb, "'%s'", value_to_str(element))
+                } else {
+                    fmt.sbprintf(&sb, "%s", value_to_str(element))
+                }
+            }
+            fmt.sbprint(&sb, "]")
+            return strings.to_string(sb)
+        case map[string]Value:
+            sb := strings.builder_make()
+            fmt.sbprint(&sb, "[")
+            i := 0
+            for dk, dv in v {
+                if i != 0 {
+                    fmt.sbprintf(&sb, ", ")
+                }
+                // TODO(flysand, 2026-03-08): This needs a proper escaping
+                // of the characters inside the string.
+                if value_is_str(dv) {
+                    fmt.sbprintf(&sb, "%s='%s'", dk, value_to_str(dv))
+                } else {
+                    fmt.sbprintf(&sb, "%s=%s", dk, value_to_str(dv))
+                }
+                i += 1
+            }
+            fmt.sbprint(&sb, "]")
+            return strings.to_string(sb)
+        case: unreachable()
     }
 }
 
@@ -419,11 +454,8 @@ eval_binary_op :: proc(
                 }
                 return joined[:]
             } else {
-                lhs_str, lhs_ok := value_to_str(lhs)
-                rhs_str, rhs_ok := value_to_str(rhs)
-                if !lhs_ok || !rhs_ok {
-                    script_errorf(ctx, op_loc, "Operation '+' does not work for provided types")
-                }
+                lhs_str := value_to_str(lhs)
+                rhs_str := value_to_str(rhs)
                 return fmt.tprint(lhs_str, rhs_str, sep="")
             }
         case .Div:
@@ -467,13 +499,9 @@ eval_binary_op :: proc(
                     }
                     return 1
                 } else if value_is_str(lhs) || value_is_str(rhs) {
-                    lhs_s, lhs_ok := value_to_str(lhs)
-                    rhs_s, rhs_ok := value_to_str(rhs)
-                    if lhs_ok && rhs_ok {
-                        return i64(lhs_s == rhs_s)
-                    } else {
-                        script_errorf(ctx, op_loc, "Operation '==' does not work for provided types")
-                    }
+                    lhs_s := value_to_str(lhs)
+                    rhs_s := value_to_str(rhs)
+                    return i64(lhs_s == rhs_s)
                 } else {
                     script_errorf(ctx, op_loc, "Operation '==' does not work for provided types")
                 }
@@ -498,13 +526,9 @@ eval_binary_op :: proc(
                     }
                     return 0
                 } else if value_is_str(lhs) || value_is_str(rhs) {
-                    lhs_s, lhs_ok := value_to_str(lhs)
-                    rhs_s, rhs_ok := value_to_str(rhs)
-                    if lhs_ok && rhs_ok {
-                        return i64(lhs_s != rhs_s)
-                    } else {
-                        script_errorf(ctx, op_loc, "Operation '!=' does not work for provided types")
-                    }
+                    lhs_s := value_to_str(lhs)
+                    rhs_s := value_to_str(rhs)
+                    return i64(lhs_s != rhs_s)
                 } else {
                     script_errorf(ctx, op_loc, "Operation '!=' does not work for provided types")
                 }
@@ -518,13 +542,9 @@ eval_binary_op :: proc(
             if value_is_int(lhs) && value_is_int(rhs) {
                 return i64(lhs.(i64) >= rhs.(i64))
             } else if value_is_str(lhs) || value_is_str(rhs) {
-                lhs_s, lhs_ok := value_to_str(lhs)
-                rhs_s, rhs_ok := value_to_str(rhs)
-                if lhs_ok && rhs_ok {
-                    return i64(lhs_s >= rhs_s)
-                } else {
-                    script_errorf(ctx, op_loc, "Operation '>=' does not work for provided types")
-                }
+                lhs_s := value_to_str(lhs)
+                rhs_s := value_to_str(rhs)
+                return i64(lhs_s >= rhs_s)
             } else {
                 script_errorf(ctx, op_loc, "Operation '>=' does not work for provided types")
             }
@@ -535,13 +555,9 @@ eval_binary_op :: proc(
             if value_is_int(lhs) && value_is_int(rhs) {
                 return i64(lhs.(i64) > rhs.(i64))
             } else if value_is_str(lhs) || value_is_str(rhs) {
-                lhs_s, lhs_ok := value_to_str(lhs)
-                rhs_s, rhs_ok := value_to_str(rhs)
-                if lhs_ok && rhs_ok {
-                    return i64(lhs_s > rhs_s)
-                } else {
-                    script_errorf(ctx, op_loc, "Operation '>' does not work for provided types")
-                }
+                lhs_s := value_to_str(lhs)
+                rhs_s := value_to_str(rhs)
+                return i64(lhs_s > rhs_s)
             } else {
                 script_errorf(ctx, op_loc, "Operation '>' does not work for provided types")
             }
@@ -552,13 +568,9 @@ eval_binary_op :: proc(
             if value_is_int(lhs) && value_is_int(rhs) {
                 return i64(lhs.(i64) <= rhs.(i64))
             } else if value_is_str(lhs) || value_is_str(rhs) {
-                lhs_s, lhs_ok := value_to_str(lhs)
-                rhs_s, rhs_ok := value_to_str(rhs)
-                if lhs_ok && rhs_ok {
-                    return i64(lhs_s <= rhs_s)
-                } else {
-                    script_errorf(ctx, op_loc, "Operation '<=' does not work for provided types")
-                }
+                lhs_s := value_to_str(lhs)
+                rhs_s := value_to_str(rhs)
+                return i64(lhs_s <= rhs_s)
             } else {
                 script_errorf(ctx, op_loc, "Operation '<=' does not work for provided types")
             }
@@ -569,13 +581,9 @@ eval_binary_op :: proc(
             if value_is_int(lhs) && value_is_int(rhs) {
                 return i64(lhs.(i64) < rhs.(i64))
             } else if value_is_str(lhs) || value_is_str(rhs) {
-                lhs_s, lhs_ok := value_to_str(lhs)
-                rhs_s, rhs_ok := value_to_str(rhs)
-                if lhs_ok && rhs_ok {
-                    return i64(lhs_s < rhs_s)
-                } else {
-                    script_errorf(ctx, op_loc, "Operation '<' does not work for provided types")
-                }
+                lhs_s := value_to_str(lhs)
+                rhs_s := value_to_str(rhs)
+                return i64(lhs_s < rhs_s)
             } else {
                 script_errorf(ctx, op_loc, "Operation '<' does not work for provided types")
             }
@@ -597,10 +605,7 @@ eval_binary_op :: proc(
                 }
                 return &arr[index]
             } else if value_is_map(lhs) {
-                v, ok := value_to_str(rhs)
-                if !ok {
-                    script_errorf(ctx, op_loc, "Dict subscript must be with a string")
-                }
+                v := value_to_str(rhs)
                 m := lhs.(map[string]Value)
                 if v not_in m {
                     return nil
@@ -613,8 +618,7 @@ eval_binary_op :: proc(
         case .Member:
             // TODO: error handling of type of un
             dict := lhs.(map[string]Value)
-            key, key_ok := value_to_str(rhs)
-            assert(key_ok)
+            key := value_to_str(rhs)
             if key not_in dict {
                 script_errorf(ctx, op_loc, "Key '%s' not in the dictionary", key)
             }
@@ -643,10 +647,7 @@ eval_template :: proc(ctx: ^Ctx, env: ^Env, loc: Loc, str: string) -> string {
             i += 1
             mb_val := env_get(env, str[start_idx:end_idx])
             if val, ok := mb_val.?; ok {
-                val_str, str_ok := value_to_str(val)
-                if !str_ok {
-                    script_errorf(ctx, loc, "String interpolation parameter cannot be converted to string")
-                }
+                val_str := value_to_str(val)
                 strings.write_string(&sb, val_str)
             }
         }
