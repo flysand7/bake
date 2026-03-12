@@ -1,6 +1,11 @@
 
 # Bake
 
+> [!CAUTION]
+> Bake is currently a proof-of-concept project. The current state of the project
+> is far from usable and contains many bugs. Do not use it in production
+> systems.
+
 Bake is a build system that uses an imperative programming language to produce
 build rules.
 
