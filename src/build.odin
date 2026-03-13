@@ -14,23 +14,58 @@ Cmd :: union {
     string,
 }
 
+/*
+Recipe
+
+Recipes determine a way of obtaining a set of output files by executing a set of
+input commands. The targets can be obtained if all of the input files exist and
+the command is executed.
+*/
 Recipe :: struct {
     cmds: []Cmd,
     inputs: []string,
     outputs: []string,
 }
 
-Dep_Node :: struct {
-    task: Recipe,
-    node_depn: [dynamic]^Dep_Node,
-    leaf_depn: [dynamic]string,
-    intr_depn: [dynamic]string,
+/*
+Recipe node in a dependency DAG
+
+This struct is a node in the directed acyclic graph (DAG) of the dependency
+tree. The DAG is built out of recipes, where each recipe with a set of input
+files can depend on other recipes that provide some of these files as outputs.
+
+The input files for the node are split into two categories:
+1. The leaf dependencies - these files are expected to always exist in the
+   project and may not altered by the build system. These files are typically
+   the source code and other project files that exist prior to the first run
+   of the build system.
+2. The intermediate dependencies - these are files that are produced by one
+   recipe but needed as an input for another recipe. These files are typically
+   build artefacts.
+*/
+Recipe_Node :: struct {
+    recipe: Recipe,
+    dependencies: [dynamic]^Recipe_Node,
+    leaf_dependencies: [dynamic]string,
+    intr_dependencies: [dynamic]string,
 }
 
-Dep_Tree :: struct {
-    roots: [dynamic]^Dep_Node,
+/*
+The directed acyclic graph (DAG) of recipe dependencies
+*/
+Recipe_DAG :: struct {
+    roots: [dynamic]^Recipe_Node,
 }
 
+/*
+A task to be executed
+
+This defines a specific task to be executed. Each task specifies a command to be
+executed and a set of inputs and outputs to that command. The files are being
+kept track of in order to interface with the cache -- to see, if the task needs
+to be executed at all. If the inputs are unchanged, the outputs will too
+(provided the command is deterministic).
+*/
 Exec_Task :: struct {
     cmds: []Cmd,
     leaf_inputs: []File,
@@ -38,65 +73,61 @@ Exec_Task :: struct {
     outputs: []string,
 }
 
-dep_tree_make :: proc() -> Dep_Tree {
-    return {
-        roots = make([dynamic]^Dep_Node),
-    }
-}
-
-find_task_producing_file :: proc(tasks: []Recipe, file: string) -> (Recipe, bool) {
-    for task in tasks {
-        for output in task.outputs {
-            if file == output {
-                return task, true
+find_recipe_for_target :: proc(recipes: []Recipe, target: string) -> (Recipe, bool) {
+    for r in recipes {
+        for output in r.outputs {
+            if target == output {
+                return r, true
             }
         }
     }
     return {}, false
 }
 
-dep_node_for_task :: proc(tasks: []Recipe, task: Recipe) -> ^Dep_Node {
-    dn := new(Dep_Node)
-    dn.task = task
-    for input in task.inputs {
-        depn_task, ok := find_task_producing_file(tasks, input)
+dep_node_for_recipe :: proc(recipes: []Recipe, recipe: Recipe) -> ^Recipe_Node {
+    dn := new(Recipe_Node)
+    dn.recipe = recipe
+    for input in recipe.inputs {
+        depn_task, ok := find_recipe_for_target(recipes, input)
         if !ok {
-            append(&dn.leaf_depn, input)
+            append(&dn.leaf_dependencies, input)
         } else {
-            append(&dn.node_depn, dep_node_for_task(tasks, depn_task))
-            append(&dn.intr_depn, input)
+            append(&dn.dependencies, dep_node_for_recipe(recipes, depn_task))
+            append(&dn.intr_dependencies, input)
         }
     }
     return dn
 }
 
-dep_tree_from_tasks :: proc(tasks: []Recipe, targets: []string) -> Dep_Tree {
-    dt := dep_tree_make()
+dependency_dag_build :: proc(recipes: []Recipe, targets: []string) -> Recipe_DAG {
+    dt := Recipe_DAG {
+        roots = make([dynamic]^Recipe_Node),
+    }
     for target in targets {
-        task, ok := find_task_producing_file(tasks, target)
+        recipe, ok := find_recipe_for_target(recipes, target)
         if !ok {
-            panic("No task produces a desired target")
+            panic("No recipe produces a desired target")
         }
-        append(&dt.roots, dep_node_for_task(tasks, task))
+        append(&dt.roots, dep_node_for_recipe(recipes, recipe))
     }
     return dt
 }
 
-dep_tree_toposort :: proc(dt: Dep_Tree) -> []Exec_Task {
-    dep_tree_walk :: proc(arr: ^[dynamic]^Dep_Node, dn: ^Dep_Node) {
-        for node in dn.node_depn {
+dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []Exec_Task {
+    dep_tree_walk :: proc(arr: ^[dynamic]^Recipe_Node, dn: ^Recipe_Node) {
+        for node in dn.dependencies {
             dep_tree_walk(arr, node)
         }
         append(arr, dn)
     }
-    nodes := make([dynamic]^Dep_Node)
+    nodes := make([dynamic]^Recipe_Node)
     for root in dt.roots {
         dep_tree_walk(&nodes, root)
     }
     tasks := make([]Exec_Task, len(nodes))
     for n, i in nodes {
-        leaf_files := make([]File, len(n.leaf_depn))
-        for filename, j in n.leaf_depn {
+        leaf_files := make([]File, len(n.leaf_dependencies))
+        for filename, j in n.leaf_dependencies {
             ok := false
             leaf_files[j], ok = file_make(filename)
             if !ok {
@@ -104,20 +135,20 @@ dep_tree_toposort :: proc(dt: Dep_Tree) -> []Exec_Task {
             }
         }
         tasks[i] = Exec_Task {
-            cmds = n.task.cmds,
+            cmds = n.recipe.cmds,
             leaf_inputs = leaf_files,
-            intr_inputs = n.intr_depn[:],
-            outputs = n.task.outputs[:],
+            intr_inputs = n.intr_dependencies[:],
+            outputs = n.recipe.outputs[:],
         }
     }
     return tasks
 }
 
-build_files :: proc(tasks: []Recipe, files: []string) {
+build_files :: proc(recipes: []Recipe, files: []string) {
     cache := cache_open()
     out_cache := cache_make()
-    dt := dep_tree_from_tasks(tasks, files)
-    exec_tasks := dep_tree_toposort(dt)
+    dt := dependency_dag_build(recipes, files)
+    exec_tasks := dependency_dag_toposort(dt)
     had_errors := false
     for task, idx in exec_tasks {
         cached := true
@@ -132,7 +163,7 @@ build_files :: proc(tasks: []Recipe, files: []string) {
         for filename in task.intr_inputs {
             file, file_ok := file_make(filename)
             append(&intr_inputs, file)
-            assert(file_ok, "File not produced by previous task")
+            assert(file_ok, "File not produced by previous recipe")
             old_file, cache_ok := cache_find(&cache, file)
             this_cached := cache_ok && old_file.write_time == file.write_time
             if !this_cached {
