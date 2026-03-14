@@ -68,8 +68,7 @@ to be executed at all. If the inputs are unchanged, the outputs will too
 */
 Exec_Task :: struct {
     cmds: []Cmd,
-    leaf_inputs: []File,
-    intr_inputs: []string,
+    inputs: []string,
     outputs: []string,
 }
 
@@ -113,7 +112,7 @@ dependency_dag_build :: proc(recipes: []Recipe, targets: []string) -> Recipe_DAG
     return dt
 }
 
-dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []Exec_Task {
+dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []^Recipe_Node {
     dep_tree_walk :: proc(arr: ^[dynamic]^Recipe_Node, dn: ^Recipe_Node) {
         for node in dn.dependencies {
             dep_tree_walk(arr, node)
@@ -124,87 +123,76 @@ dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []Exec_Task {
     for root in dt.roots {
         dep_tree_walk(&nodes, root)
     }
-    tasks := make([]Exec_Task, len(nodes))
-    for n, i in nodes {
-        leaf_files := make([]File, len(n.leaf_dependencies))
-        for filename, j in n.leaf_dependencies {
-            ok := false
-            leaf_files[j], ok = file_make(filename)
-            if !ok {
-                panic("File dependency not found")
-            }
-        }
-        tasks[i] = Exec_Task {
-            cmds = n.recipe.cmds,
-            leaf_inputs = leaf_files,
-            intr_inputs = n.intr_dependencies[:],
-            outputs = n.recipe.outputs[:],
-        }
-    }
-    return tasks
+    return nodes[:]
 }
 
-build_files :: proc(recipes: []Recipe, files: []string) {
-    cache := cache_open()
-    out_cache := cache_make()
-    dt := dependency_dag_build(recipes, files)
-    exec_tasks := dependency_dag_toposort(dt)
-    had_errors := false
-    for task, idx in exec_tasks {
-        cached := true
-        for file in task.leaf_inputs {
-            old_file, ok := cache_find(&cache, file)
-            this_cached := ok && old_file.write_time == file.write_time
-            if !this_cached {
-                cached = false
+build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string) -> []Exec_Task {
+    dag := dependency_dag_build(recipes, targets)
+    sorted_nodes := dependency_dag_toposort(dag)
+    plan := make([dynamic]Exec_Task)
+    for node, i in sorted_nodes {
+        need_rebuild := false
+        for dependency in node.recipe.inputs {
+            file, file_ok := file_make(dependency)
+            if !file_ok {
+                panic("Recipe's input file not found")
+            }
+            cached_file, is_cached := cache_find(cache, file)
+            if !is_cached || cached_file.write_time != file.write_time {
+                need_rebuild = true
             }
         }
-        intr_inputs := make([dynamic]File)
-        for filename in task.intr_inputs {
-            file, file_ok := file_make(filename)
-            append(&intr_inputs, file)
-            assert(file_ok, "File not produced by previous recipe")
-            old_file, cache_ok := cache_find(&cache, file)
-            this_cached := cache_ok && old_file.write_time == file.write_time
-            if !this_cached {
-                cached = false
-            }
-        }
-        for output in task.outputs {
+        for output in node.recipe.outputs {
             if !os.exists(output) {
-                cached = false
+                need_rebuild = true
             }
         }
-        fmt.printf("%s[%d/%d]: %v\n", cached?"[CACHED]":"", idx+1, len(exec_tasks), task.cmds)
-        if !cached {
-            for cmd in task.cmds {
-                code, err := run_cmd(cmd)
-                if err != nil {
-                    fmt.eprintf("Failed to run command: %v\n", cmd)
-                    if err == .Executable_Not_Found {
-                        fmt.eprintf("  Specified executable not found.\n")
-                    }
-                    os.exit(1)
-                }
-                if code != 0 {
-                    fmt.printf("Command %v failed with error code: %d\n", cmd, code)
-                    had_errors := true
-                    break
-                }
-            }
-            for out in task.outputs {
-                file, ok := file_make(out)
-                assert(ok, "Command doesn't produce the specified output")
-                cache_add(&out_cache, file)
-            }
-        }
-        for file in task.leaf_inputs {
-            cache_add(&out_cache, file)
-        }
-        for file in intr_inputs {
-            cache_add(&out_cache, file)
+        if need_rebuild {
+            append(&plan, Exec_Task {
+                cmds = node.recipe.cmds,
+                inputs = node.recipe.inputs,
+                outputs = node.recipe.outputs,
+            })
         }
     }
-    cache_write(&out_cache)
+    return plan[:]
+}
+
+execute_plan :: proc(plan: []Exec_Task) {
+    had_errors := false
+    cache := cache_make()
+    for task, idx in plan {
+        for cmd in task.cmds {
+            code, err := run_cmd(cmd)
+            if err != nil {
+                fmt.eprintf("Failed to run command: %v\n", cmd)
+                if err == .Executable_Not_Found {
+                    fmt.eprintf("  Specified executable not found.\n")
+                }
+                os.exit(1)
+            }
+            if code != 0 {
+                fmt.printf("Command %v failed with error code: %d\n", cmd, code)
+                had_errors := true
+                break
+            }
+        }
+        for out in task.outputs {
+            file, ok := file_make(out)
+            assert(ok, "Command doesn't produce the specified output")
+            cache_add(&cache, file)
+        }
+        for in_file in task.inputs {
+            file, ok := file_make(in_file)
+            cache_add(&cache, file)
+        }
+    }
+    cache_write(&cache)
+}
+
+build :: proc(recipes: []Recipe, targets: []string) {
+    cache := cache_open()
+    plan := build_execution_plan(&cache, recipes, targets)
+    execute_plan(plan)
 }
 
