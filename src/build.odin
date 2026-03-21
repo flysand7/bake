@@ -133,12 +133,8 @@ build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string
     for node, i in sorted_nodes {
         need_rebuild := false
         for dependency in node.recipe.inputs {
-            file, file_ok := file_make(dependency)
-            if !file_ok {
-                panic("Recipe's input file not found")
-            }
-            cached_file, is_cached := cache_find(cache, file)
-            if !is_cached || cached_file.write_time != file.write_time {
+            status := cache_check(cache, dependency)
+            if status != .Unchanged {
                 need_rebuild = true
             }
         }
@@ -177,14 +173,11 @@ execute_plan :: proc(plan: []Exec_Task) {
                 break
             }
         }
-        for out in task.outputs {
-            file, ok := file_make(out)
-            assert(ok, "Command doesn't produce the specified output")
-            cache_add(&cache, file)
+        for output in task.outputs {
+            cache_file(&cache, output)
         }
-        for in_file in task.inputs {
-            file, ok := file_make(in_file)
-            cache_add(&cache, file)
+        for input in task.inputs {
+            cache_file(&cache, input)
         }
     }
     cache_write(&cache)
