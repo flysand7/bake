@@ -48,16 +48,17 @@ test_one_output_pass :: proc(t: ^testing.T) {
 
 // If the recipe set contains one unchanged output, that recipe should be
 // discarded.
-
-// If the recipe set contains one changed output, that recipe should be
-// executed.
 @(test)
 test_one_output_discard :: proc(t: ^testing.T) {
     cache := test_cache_make([]Test_Cache_Rec {
         Test_Cache_Rec {
             filename = "src/main.odin",
             status = .Unchanged,
-        }
+        },
+        Test_Cache_Rec {
+            filename = "test.exe",
+            status = .Unchanged,
+        },
     })
     recipes := []Recipe {
         Recipe {

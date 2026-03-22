@@ -139,7 +139,11 @@ build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string
             }
         }
         for output in node.recipe.outputs {
-            if !os.exists(output) {
+            status := cache_check(cache, output)
+            if status == .Updated {
+                fmt.printfln("[WARNING]: Output %s unexpectedly changed since last rebuild. Rebuilding.", output)
+            }
+            if status != .Unchanged {
                 need_rebuild = true
             }
         }
