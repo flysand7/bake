@@ -122,6 +122,6 @@ builtin_build :: proc(ctx: ^Ctx, args: []Value) -> Value {
         str := value_to_str(v)
         append(&files_strs, str)
     }
-    build_files(ctx.tasks[:], files_strs[:])
+    build(ctx.tasks[:], files_strs[:])
     return nil
 }
