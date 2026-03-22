@@ -70,3 +70,53 @@ test_one_output_discard :: proc(t: ^testing.T) {
     plan := build_execution_plan(&cache, recipes, {"test.exe"})
     testing.expect_value(t, len(plan), 0)
 }
+
+// If the recipe set contains a changed input, but the output is unchanged,
+// that recipe should be executed.
+@(test)
+test_changed_input_pass :: proc(t: ^testing.T) {
+    cache := test_cache_make([]Test_Cache_Rec {
+        Test_Cache_Rec {
+            filename = "src/main.odin",
+            status = .Updated,
+        },
+        Test_Cache_Rec {
+            filename = "test.exe",
+            status = .Unchanged,
+        },
+    })
+    recipes := []Recipe {
+        Recipe {
+            cmds = []Cmd { "odin build src -o:test.exe" },
+            inputs = []string { "src/main.odin" },
+            outputs = []string { "test.exe" },
+        },
+    }
+    plan := build_execution_plan(&cache, recipes, {"test.exe"})
+    testing.expect_value(t, len(plan), 1)
+}
+
+// If the recipe set contains a changed output, that recipe should be executed,
+// regardless of whether the input is changed or not.
+@(test)
+test_changed_output_pass :: proc(t: ^testing.T) {
+    cache := test_cache_make([]Test_Cache_Rec {
+        Test_Cache_Rec {
+            filename = "src/main.odin",
+            status = .Unchanged,
+        },
+        Test_Cache_Rec {
+            filename = "test.exe",
+            status = .Updated,
+        },
+    })
+    recipes := []Recipe {
+        Recipe {
+            cmds = []Cmd { "odin build src -o:test.exe" },
+            inputs = []string { "src/main.odin" },
+            outputs = []string { "test.exe" },
+        },
+    }
+    plan := build_execution_plan(&cache, recipes, {"test.exe"})
+    testing.expect_value(t, len(plan), 1)
+}
