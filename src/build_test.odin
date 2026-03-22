@@ -120,3 +120,32 @@ test_changed_output_pass :: proc(t: ^testing.T) {
     plan := build_execution_plan(&cache, recipes, {"test.exe"})
     testing.expect_value(t, len(plan), 1)
 }
+
+// If the intermediate output is changed, both, the step that is producing the
+// intermediate output and the step that is using that output should be re-run.
+@(test)
+test_intermediate_output_change_pass :: proc(t: ^testing.T) {
+    cache := test_cache_make([]Test_Cache_Rec {
+        Test_Cache_Rec { "src/main.odin", .Unchanged },
+        Test_Cache_Rec { "test.o", .Updated },
+        Test_Cache_Rec { "test.a", .Unchanged },
+    })
+    // Note(flysand): These are intentionally out of order to also test the
+    // sorting that build_execution_plan should perform.
+    recipes := []Recipe {
+        Recipe {
+            cmds = []Cmd { "llvm-ar xrv test.a test.o" },
+            inputs = []string { "test.o" },
+            outputs = []string { "test.a" },
+        },
+        Recipe {
+            cmds = []Cmd { "odin build src -o:test.o -build-mode:obj" },
+            inputs = []string { "src/main.odin" },
+            outputs = []string { "test.o" },
+        },
+    }
+    plan := build_execution_plan(&cache, recipes, { "test.a" })
+    testing.expect_value(t, len(plan), 2)
+    testing.expect_value(t, plan[0].cmds[0].(string), "odin build src -o:test.o -build-mode:obj")
+    testing.expect_value(t, plan[1].cmds[0].(string), "llvm-ar xrv test.a test.o")
+}
