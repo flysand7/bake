@@ -1,36 +1,29 @@
 
-let options = {
-    debug = false,
-    build_mode = 'exe',
-}
-
-
-options.debug = true
-
-let isd = options.debug
-print("Is debug: ${isd}\n")
-
-# Recipe for building C files
-func compile(input, output) {
-    bake-recipe(
-        [
-            ['clang.exe', input, '-o', output],
-        ],
-        [input],
-        [output],
-    )
-}
-
 func 'cli' build(args) {
-    if len(args) < 1 {
-        print("Syntax: build <exe-name>")
-    }
-    let exe-name = args[0]
-    # Create the recipe
-    compile('testing/print-args.c', exe-name)
+    let exe_name = 'bake.exe'
+    print('=> Adding a recipe\n')
+    bake-recipe(
+        [['odin', 'build', 'src', "-out:${exe_name}", '-debug']],
+        [
+            'src/bake.odin',
+            'src/bakefile.odin',
+            'src/build_test.odin',
+            'src/build.odin',
+            'src/cache.odin',
+            'src/exec.odin',
+            'src/file_windows.odin',
+            'src/parser.odin',
+            'src/script_builtin.odin',
+            'src/script_error.odin',
+            'src/script.odin',
+        ],
+        [exe_name],
+    )
+    print('=> Calling build\n')
+    bake-build([exe_name])
+}
 
-    # Build and run
-    bake-build([exe-name])
+func 'cli' test(args) {
     cmd(exe-name, 1, 2, 3)
 }
 
