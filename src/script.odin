@@ -166,6 +166,10 @@ value_to_str :: proc(value: Value) -> string {
             }
             fmt.sbprint(&sb, "]")
             return strings.to_string(sb)
+        case Stmt_Func:
+            return fmt.tprint("<func ", v.name.name, ">")
+        case Builtin_Func:
+            return "<builtin>"
         case: unreachable()
     }
 }
