@@ -156,3 +156,4 @@ func t5-add2(a) {
 assert(t5-add2(3) == 6, 'The function doesn`t capture variables from the global scope')
 assert(t5-v == 3, 'The function didn`t mutate the global variable')
 
+print('All tests completed!')
