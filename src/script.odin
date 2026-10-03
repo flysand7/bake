@@ -537,7 +537,7 @@ eval_binary_op :: proc(
             }
         case .Ge:
             if value_is_nil(lhs) || value_is_nil(rhs) {
-                return false
+                return 0
             }
             if value_is_int(lhs) && value_is_int(rhs) {
                 return i64(lhs.(i64) >= rhs.(i64))
@@ -550,7 +550,7 @@ eval_binary_op :: proc(
             }
         case .Gt:
             if value_is_nil(lhs) || value_is_nil(rhs) {
-                return false
+                return 0
             }
             if value_is_int(lhs) && value_is_int(rhs) {
                 return i64(lhs.(i64) > rhs.(i64))
@@ -563,7 +563,7 @@ eval_binary_op :: proc(
             }
         case .Le:
             if value_is_nil(lhs) || value_is_nil(rhs) {
-                return false
+                return 0
             }
             if value_is_int(lhs) && value_is_int(rhs) {
                 return i64(lhs.(i64) <= rhs.(i64))
@@ -576,7 +576,7 @@ eval_binary_op :: proc(
             }
         case .Lt:
             if value_is_nil(lhs) || value_is_nil(rhs) {
-                return false
+                return 0
             }
             if value_is_int(lhs) && value_is_int(rhs) {
                 return i64(lhs.(i64) < rhs.(i64))
