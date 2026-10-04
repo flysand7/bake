@@ -997,27 +997,22 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
 
 parse_stmt_block :: proc(p: ^Parser) -> ^Stmt {
     assert(parser_op_is(p, .LBrace))
-    lbrace_loc := p.token.loc
     parser_token_next(p)
     skip_newline(p)
     stmts := make([dynamic]^Stmt)
-    loc := Maybe(Loc) {}
+    loc := p.token.loc
     for !parser_op_match(p, .RBrace) {
         if p.token.un == nil {
-            parse_errorf(p, lbrace_loc, "'{' is not terminated by '}'")
+            parse_errorf(p, loc, "'{' is not terminated by '}'")
         }
         stmt := parse_stmt(p)
         for parser_op_is(p, .Ln) {
             parser_token_next(p)
         }
         append(&stmts, stmt)
-        if loc == nil {
-            loc = stmt.loc
-        } else {
-            loc = merge_locs(loc.?, stmt.loc)
-        }
     }
-    return stmt_make(loc.?, stmts[:])
+    loc = merge_locs(loc, p.token.loc)
+    return stmt_make(loc, stmts[:])
 }
 
 parse_stmts :: proc(p: ^Parser) -> []^Stmt {
