@@ -25,7 +25,7 @@ print("* T1.5: '${t1-some-string}'\n")
 print("* T1.6: '${t1-true}' '${t1-false}' '${t1-nil}'\n")
 print('* T1.7: "', t1-empty-array, '" "', t1-array, '" "', t1-complicated-array, '\n')
 print('* T1.8: "', t1-empty-dictionary, '" "', t1-dictionary, '\n')
-print('* T1.9: ${t1-func}\n')
+print("* T1.9: ${t1-func}\n")
 
 print('=> T2: OPERATORS\n')
 assert(2+2 == 4, '!! Addition failed')

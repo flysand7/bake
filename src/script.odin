@@ -126,7 +126,7 @@ value_to_int :: proc(v: Value) -> (i64, bool) {
 
 value_to_str :: proc(value: Value) -> string {
     value := value_deref(value)
-    #partial switch v in value {
+    switch v in value {
         case nil:    return ""
         case i64:    return fmt.tprint(v)
         case string: return v
@@ -166,8 +166,16 @@ value_to_str :: proc(value: Value) -> string {
             }
             fmt.sbprint(&sb, "]")
             return strings.to_string(sb)
-        case: unreachable()
+        case Stmt_Func:
+            return v.name.name
+        case Builtin_Func:
+            sb := strings.builder_make()
+            fmt.sbprintf(&sb, "<built-in@%p>", v)
+            return strings.to_string(sb)
+        case ^Value:
+            unreachable()
     }
+    unreachable()
 }
 
 value_to_bool :: proc(value: Value) -> bool {
