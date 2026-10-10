@@ -34,6 +34,8 @@ CF_Token :: enum {
     Return,
 }
 
+builtin_map := map[string]Builtin_Func {}
+
 value_is_ref :: proc(v: Value) -> bool {
     if _, isref := v.(^Value); isref {
         return true
@@ -205,11 +207,9 @@ env_make :: proc(parent: ^Env) -> ^Env {
     env.parent = parent
     env.scope = make(map[string]Value)
     if parent == nil {
-        env_set(env, "print", cast(Builtin_Func) builtin_print)
-        env_set(env, "cmd", cast(Builtin_Func) builtin_cmd)
-        env_set(env, "len", cast(Builtin_Func) builtin_len)
-        env_set(env, "bake-recipe", cast(Builtin_Func) builtin_recipe)
-        env_set(env, "bake-build", cast(Builtin_Func) builtin_build)
+        for builtin_name, builtin in builtin_map {
+            env_set(env, builtin_name, builtin)
+        }
     }
     return env
 }
@@ -238,6 +238,18 @@ env_set :: proc(env: ^Env, name: string, value: Value) {
     start_env.scope[name] = value
 }
 
+env_declare :: proc(ctx: ^Ctx, loc: Loc, env: ^Env, name: string, value: Value) {
+    for builtin_name in builtin_map {
+        if name == builtin_name {
+            script_errorf(ctx, loc, "Shadowing of a built-in ('%s') is not allowed", name)
+        }
+    }
+    if name in env.scope {
+        script_errorf(ctx, loc, "Shadowing of a variable in the same scope ('%s') is now allowed", name)
+    }
+    env.scope[name] = value
+}
+
 exec_stmts :: proc(text: string, stmts: []^Stmt) -> Ctx {
     ctx := ctx_make(text)
     env := ctx.global_env
@@ -252,12 +264,13 @@ exec_stmts :: proc(text: string, stmts: []^Stmt) -> Ctx {
 
 @(require_results)
 exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
+    stmt_loc := stmt.loc
     switch stmt in stmt.un {
     case Stmt_Expr:
         eval_expr(ctx, env, stmt.expr)
     case Stmt_Decl:
         value := eval_expr(ctx, env, stmt.value)
-        env_set(env, stmt.name.name, value)
+        env_declare(ctx, stmt_loc, env, stmt.name.name, value)
     case Stmt_If:
         val := eval_expr(ctx, env, stmt.cond)
         if value_to_bool(val) {
@@ -280,7 +293,7 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
             }
         }
     case Stmt_Func:
-        env_set(env, stmt.name.name, stmt)
+        env_declare(ctx, stmt_loc, env, stmt.name.name, stmt)
     case []^Stmt:
         env := env_make(env)
         for stmt in stmt {

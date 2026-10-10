@@ -59,6 +59,7 @@ main :: proc() {
         fmt.eprintf("Failed to open bakefile: %s\n", bakefile_path)
         os.exit(1)
     }
+    init_builtins()
     parser := parser_make(transmute(string) bakefile_bytes)
     stmts := parse_stmts(&parser)
     ctx := exec_stmts(transmute(string) bakefile_bytes, stmts)
