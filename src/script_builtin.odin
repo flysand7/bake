@@ -3,6 +3,15 @@ package bake
 import "core:os"
 import "core:fmt"
 
+init_builtins :: proc() {
+    builtin_map = {}
+    builtin_map["print"] = builtin_print
+    builtin_map["cmd"] = builtin_cmd
+    builtin_map["len"] = builtin_len
+    builtin_map["bake-recipe"] = builtin_recipe
+    builtin_map["bake-build"] = builtin_build
+}
+
 intrinsic_assert :: proc(loc: Loc, text: string, args: []Value) {
     if len(args) < 1 || len(args) > 2 {
         panic("assert(cond, message?) accepts at least one argument but no more than two")
