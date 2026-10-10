@@ -270,6 +270,7 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
         eval_expr(ctx, env, stmt.expr)
     case Stmt_Decl:
         value := eval_expr(ctx, env, stmt.value)
+        value = value_deref(value)
         env_declare(ctx, stmt_loc, env, stmt.name.name, value)
     case Stmt_If:
         val := eval_expr(ctx, env, stmt.cond)
@@ -342,14 +343,16 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
         if expr.op == .Assign {
             if ident, ok := expr.lhs.un.(Identifier); ok {
                 new_value := eval_expr(ctx, env, expr.rhs)
+                new_value = value_deref(new_value)
                 env_set(env, ident.name, new_value)
             } else {
                 value := eval_expr(ctx, env, expr.rhs)
+                value = value_deref(value)
                 target := eval_expr(ctx, env, expr.lhs)
                 if !value_is_ref(target) {
                     script_errorf(ctx, expression.loc, "Assignment target is not an lvalue")
                 }
-                target.(^Value)^ = value_deref(value)
+                target.(^Value)^ = value
             }
             return nil
         }
