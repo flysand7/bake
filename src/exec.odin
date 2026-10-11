@@ -1,6 +1,7 @@
 package bake
 
 import "core:os"
+import "core:fmt"
 
 Exec_Error :: enum {
     None,
@@ -26,7 +27,11 @@ run_system_cmd :: proc(argv: []string) -> (int, Exec_Error) {
         command = argv,
     }, context.allocator)
     if err != nil {
-        panic("Unable to start process")
+        if err == .Not_Exist {
+            return 127, nil
+        } else {
+            fmt.panicf("Unable to start process: %v", err)
+        }
     }
     return state.exit_code, nil
 }
