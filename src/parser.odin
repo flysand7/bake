@@ -702,16 +702,16 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
 }
 
 parse_expr_not_so_simple :: proc (p: ^Parser) -> ^Expr {
-    expr := parse_expr_simple(p)
-    if parser_op_match(p, .Dot) {
+    lhs := parse_expr_simple(p)
+    for parser_op_match(p, .Dot) {
         ident_loc := p.token.loc
         if ident, ok := parser_token_match(p, Identifier); ok {
-            return expr_make_binary_op(.Member, expr, expr_make(ident_loc, Lit_String{ident.name}))
+            lhs = expr_make_binary_op(.Member, lhs, expr_make(ident_loc, Lit_String{ident.name}))
         } else {
             parse_errorf(p, p.token.loc, "Expected an identifier following a member operation")
         }
     }
-    return expr
+    return lhs
 }
 
 parse_expr_unary :: proc(p: ^Parser) -> ^Expr {
