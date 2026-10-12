@@ -22,8 +22,10 @@ func compile(input, output) {
 }
 
 func 'cli' build(args) {
+    print('* executing build\n')
     if len(args) < 1 {
-        print("Syntax: build <exe-name>")
+        print("Syntax: build <exe-name>\n")
+        assert(false)
     }
     let exe-name = args[0]
     # Create the recipe
