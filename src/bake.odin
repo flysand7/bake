@@ -4,6 +4,8 @@ import "core:strings"
 import "core:fmt"
 import "core:os"
 
+import "cli"
+
 CLI_RESET :: "\e[0m"
 CLI_COLOR_VERBOSE :: "\e[38;5;234m"
 CLI_COLOR_ERROR :: "\e[38;5;197m"
@@ -135,61 +137,57 @@ printfln_color :: proc(fmt_string: string, args: ..any) {
 
 main :: proc() {
     extra_args_idx := Maybe(int) {}
-    for arg, arg_idx in os.args[1:] {
-        if arg == "-h" || arg == "--help" || arg == "-help" {
-            fmt.println(cli_recolor_string(HELP_MESSAGE))
-            os.exit(2)
-        } else if arg == "-verbose" || arg == "-v" {
-            bake_config.verbose = true
-        } else if arg == "--" {
-            extra_args_idx = arg_idx+1
-        } else if strings.has_prefix(arg, "-bakefile") {
-            if len(arg) < len("-bakefile:") {
-                printfln_error("Invalid syntax for `-bakefile` option.")
-                printfln_color("* Note: Use -bakefile:<path> syntax to specify the bakefile path.")
-                printfln_color("* Run `bake -help` to get more details about the command line syntax.")
-                os.exit(2)
-            }
-            bake_config.bakefile_path = arg[len("-bakefile:"):]
-            if len(bake_config.bakefile_path) == 0 {
-                printfln_error("Bakefile path is empty.")
-                printfln_color("* Note: Use `-bakefile:<path>` syntax to specify the bakefile path.")
-                printfln_color("* Run `bake -help` to get more details about the command line syntax.")
-                os.exit(2)
-            }
-        } else if strings.has_prefix(arg, "-cache") {
-            if len(arg) < len("-cache") {
-                printfln_error("Invalid syntax for `-cache` option.")
-                printfln_color("* Note: Use `-cache:<path>` syntax to specify the bakefile path.")
-                printfln_color("* Run `bake -help` to get more details about the command line syntax.")
-                os.exit(2)
-            }
-            bake_config.bakefile_path = arg[len("-bakefile:"):]
-            if len(bake_config.bakefile_path) == 0 {
-                printfln_error("Bakefile cache path is empty.")
-                printfln_color("* Note: Use `-cache:<path>` syntax to specify the bakefile path.")
-                printfln_color("* Run `bake -help` to get more details about the command line syntax.")
-                os.exit(2)
-            }
-        } else if arg[0] != '-' {
-            if extra_args_idx == nil {
-                if bake_config.bakefile_target == "" {
-                    bake_config.bakefile_target = arg
-                } else {
-                    printfln_error("Unexpected '%s', after [target] was already specified.", arg)
-                    printfln_color("* Note: '%s' was specified as [target] earlier", bake_config.bakefile_target)
-                    printfln_color("* Run `bake -help` to get more details about the command line syntax.")
-                    os.exit(2)
-                }
-            }
-        } else {
-            printfln_error("Unrecognized option '%s'.", arg)
-            printfln_color("* Run `bake -help` to get more details about the command line syntax.")
-            os.exit(2)
+    cl_schema := cli.Schema {
+        opts = []cli.Opt_Schema {
+            cli.opt_schema(.Boolean, "-help", {"-h", "--help"}),
+            cli.opt_schema(.Boolean, "-verbose", {"-v"}),
+            cli.opt_schema(.String,  "-bakefile"),
+            cli.opt_schema(.String,  "-cache"),
         }
     }
-    if bake_config.bakefile_target == "" {
+    cl, err := cli.parse_args(cl_schema, os.args)
+    if err.kind != nil {
+        switch err.kind {
+        case .None:
+        case .Arg_Missing:
+        case .Arg_Unexpected:
+        case .Opt_No_Name:
+            printfln_error("Invalid option syntax: '%s'.", err.arg)
+        case .Opt_No_Value:
+            printfln_error("Option '%s' requires a value.", err.opt_name)
+        case .Opt_Unknown:
+            printfln_error("Unknown option '%s'.", err.opt_name)
+        case .Opt_Already_Specified:
+            printfln_error("Option '%s' is specified multiple times.", err.opt_name)
+        case .Opt_Invalid_Value:
+            printfln_error("Option '%s' has invalid value.", err.opt_name)
+        }
+        printfln_color("* Run `bake -help` to get more details about the command line syntax.")
+        os.exit(2)
+    }
+    if cl.opts["-help"].(bool) {
+        fmt.println(cli_recolor_string(HELP_MESSAGE))
+        os.exit(2)
+    }
+    if cl.opts["-verbose"].(bool) {
+        bake_config.verbose = true
+    }
+    if "-bakefile" in cl.opts {
+        bake_config.bakefile_path = cl.opts["-bakefile"].(string)
+    }
+    if "-cache" in cl.opts {
+        bake_config.bake_cache_path = cl.opts["-cache"].(string)
+    }
+    if len(cl.args) == 0 {
         bake_config.bakefile_target = "build"
+    } else if len(cl.args) == 1 {
+        bake_config.bakefile_target = cl.args[0]
+    } else {
+        printfln_error("Unexpected '%s', after [target] was already specified.", cl.args[1])
+        printfln_color("* Note: '%s' was specified as [target] earlier", cl.args[0])
+        printfln_color("* Note: Only one target is allowed to be executed at once")
+        printfln_color("* Run `bake -help` to get more details about the command line syntax.")
+        os.exit(2)
     }
     printfln_verbose("Bakefile Target: '%s'", bake_config.bakefile_target)
     extra_args := make([dynamic]string)
@@ -206,8 +204,8 @@ main :: proc() {
         }
     }
     printfln_verbose("Bakefile Path: '%s'", bake_config.bakefile_path)
-    bakefile_bytes, err := os.read_entire_file(bake_config.bakefile_path, context.temp_allocator)
-    if err != nil {
+    bakefile_bytes, bakefile_bytes_err := os.read_entire_file(bake_config.bakefile_path, context.temp_allocator)
+    if bakefile_bytes_err != nil {
         printfln_error("Failed to open bakefile: '%s'\n", bake_config.bakefile_path)
         os.exit(1)
     }
