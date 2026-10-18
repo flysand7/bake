@@ -41,6 +41,7 @@
 */
 package bake_cli
 
+import "core:os"
 import "core:strings"
 
 /*
@@ -86,7 +87,8 @@ Error :: struct {
     Configuration for the command-line interfacing.
 */
 Config :: struct {
-    color_output: bool,
+    stdout_color: bool,
+    stderr_color: bool,
 }
 
 /*
@@ -156,14 +158,16 @@ find_opt_schema :: proc(schema: Schema, opt: string) -> (Opt_Schema, bool) {
     Global CLI configuration.
 */
 config := Config {
-    color_output = true,
+    stdout_color = true,
+    stderr_color = true,
 }
 
 /*
     Initializes the default settings for the cli package.
 */
 init :: proc() {
-    config.color_output = true
+    config.stdout_color = isatty(os.stdout)
+    config.stderr_color = isatty(os.stderr)
 }
 
 /*

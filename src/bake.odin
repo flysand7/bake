@@ -6,14 +6,6 @@ import "core:os"
 
 import "cli"
 
-CLI_RESET :: "\e[0m"
-CLI_COLOR_VERBOSE :: "\e[38;5;234m"
-CLI_COLOR_ERROR :: "\e[38;5;197m"
-CLI_COLOR_USER :: "\e[38;5;121m"
-CLI_COLOR_CODE :: "\e[38;5;104m"
-CLI_COLOR_ARG :: "\e[38;5;220m"
-CLI_COLOR_PAR :: "\e[38;5;185m"
-
 HELP_MESSAGE :: `bake - Build system
 
 Syntax:
@@ -32,6 +24,7 @@ Available options:
                     default: './bakefile'
   -cache:<path>     Specify an alternative path to bake cache.
                     default: './.bake-cache'
+  -no-colors        Prevent ANSI printing colors.
 `
 
 Bake_Config :: struct {
@@ -51,11 +44,15 @@ bake_config := Bake_Config {
 printfln_verbose :: proc(fmt_string: string, args: ..any) {
     sb := strings.builder_make(context.allocator)
     if bake_config.verbose {
-        fmt.sbprintf(&sb, CLI_COLOR_VERBOSE + "[VERBOSE] ")
+        fmt.sbprintf(&sb, cli.COLOR_VERBOSE + "[VERBOSE] ")
         fmt.sbprintf(&sb, fmt_string, ..args)
-        fmt.sbprintf(&sb, CLI_RESET + "\n")
+        fmt.sbprintf(&sb, cli.COLOR_RESET + "\n")
     }
-    fmt.printf(strings.to_string(sb))
+    if cli.config.stdout_color {
+        fmt.printf(strings.to_string(sb))
+    } else {
+        fmt.printf(cli.strip_color(strings.to_string(sb)))
+    }
 }
 
 cli_recolor_string :: proc(s: string) -> string {
@@ -72,13 +69,13 @@ cli_recolor_string :: proc(s: string) -> string {
         }
         if !(('a' <= s[i] && s[i] <= 'z') || ('A' <= s[i] && s[i] <= 'Z') || s[i] == '-') {
             arg = false
-            strings.write_string(&sb, CLI_RESET)
+            strings.write_string(&sb, cli.COLOR_RESET)
         }
         switch s[i] {
         case '-':
             if !arg && spc {
                 arg = true
-                strings.write_string(&sb, CLI_COLOR_ARG)
+                strings.write_string(&sb, cli.COLOR_ARG)
                 strings.write_byte(&sb, '-')
             } else {
                 strings.write_byte(&sb, '-')
@@ -86,32 +83,32 @@ cli_recolor_string :: proc(s: string) -> string {
         case '`':
             if !m {
                 strings.write_byte(&sb, '`')
-                strings.write_string(&sb, CLI_COLOR_CODE)
+                strings.write_string(&sb, cli.COLOR_CODE)
             } else {
-                strings.write_string(&sb, CLI_RESET)
+                strings.write_string(&sb, cli.COLOR_RESET)
                 strings.write_byte(&sb, '`')
             }
             m = !m
         case '\'':
             if !m {
                 strings.write_byte(&sb, '\'')
-                strings.write_string(&sb, CLI_COLOR_USER)
+                strings.write_string(&sb, cli.COLOR_USER)
             } else {
-                strings.write_string(&sb, CLI_RESET)
+                strings.write_string(&sb, cli.COLOR_RESET)
                 strings.write_byte(&sb, '\'')
             }
             m = !m
         case '[':
             strings.write_byte(&sb, '[')
-            strings.write_string(&sb, CLI_COLOR_ARG)
+            strings.write_string(&sb, cli.COLOR_ARG)
         case ']':
-            strings.write_string(&sb, CLI_RESET)
+            strings.write_string(&sb, cli.COLOR_RESET)
             strings.write_byte(&sb, ']')
         case '<':
             strings.write_byte(&sb, '<')
-            strings.write_string(&sb, CLI_COLOR_PAR)
+            strings.write_string(&sb, cli.COLOR_PAR)
         case '>':
-            strings.write_string(&sb, CLI_RESET)
+            strings.write_string(&sb, cli.COLOR_RESET)
             strings.write_byte(&sb, '>')
         case:
             strings.write_byte(&sb, s[i])
@@ -122,9 +119,13 @@ cli_recolor_string :: proc(s: string) -> string {
 
 printfln_error :: proc(fmt_string: string, args: ..any) {
     sb := strings.builder_make(context.allocator)
-    fmt.sbprintf(&sb, CLI_COLOR_ERROR + "[ERROR] ")
-    fmt.sbprintf(&sb, fmt_string, ..args)
-    fmt.sbprintf(&sb, CLI_RESET + "\n")
+    if cli.config.stderr_color {
+        fmt.sbprintf(&sb, cli.COLOR_ERROR + "[ERROR] ")
+        fmt.sbprintf(&sb, fmt_string, ..args)
+        fmt.sbprintf(&sb, cli.COLOR_RESET + "\n")
+    } else {
+        fmt.sbprintf(&sb, fmt_string, ..args)
+    }
     fmt.eprintf(strings.to_string(sb))
 }
 
@@ -132,7 +133,11 @@ printfln_color :: proc(fmt_string: string, args: ..any) {
     sb := strings.builder_make(context.allocator)
     fmt.sbprintf(&sb, fmt_string, ..args)
     fmt.sbprintf(&sb, "\n")
-    fmt.printf(cli_recolor_string(strings.to_string(sb)))
+    if cli.config.stdout_color {
+        fmt.printf(cli_recolor_string(strings.to_string(sb)))
+    } else {
+        fmt.printf(strings.to_string(sb))
+    }
 }
 
 main :: proc() {
@@ -141,10 +146,12 @@ main :: proc() {
         opts = []cli.Opt_Schema {
             cli.opt_schema(.Boolean, "-help", {"-h", "--help"}),
             cli.opt_schema(.Boolean, "-verbose", {"-v"}),
+            cli.opt_schema(.Boolean, "-no-colors"),
             cli.opt_schema(.String,  "-bakefile"),
             cli.opt_schema(.String,  "-cache"),
         }
     }
+    cli.init()
     cl, err := cli.parse_args(cl_schema, os.args)
     if err.kind != nil {
         switch err.kind {
@@ -165,8 +172,16 @@ main :: proc() {
         printfln_color("* Run `bake -help` to get more details about the command line syntax.")
         os.exit(2)
     }
+    if cl.opts["-no-colors"].(bool) {
+        cli.config.stderr_color = false
+        cli.config.stdout_color = false
+    }
     if cl.opts["-help"].(bool) {
-        fmt.println(cli_recolor_string(HELP_MESSAGE))
+        if cli.config.stdout_color {
+            fmt.println(cli_recolor_string(HELP_MESSAGE))
+        } else {
+            fmt.println(HELP_MESSAGE)
+        }
         os.exit(2)
     }
     if cl.opts["-verbose"].(bool) {
