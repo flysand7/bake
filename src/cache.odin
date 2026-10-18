@@ -30,6 +30,7 @@ Cache a file.
 This should record the requested file's information inside the cache.
 */
 cache_file :: proc(ic: ^Cache, filename: string) {
+    printfln_verbose("* Cached file: '%s'", filename)
     ic._impl_file(ic.ctx, filename)
 }
 
@@ -40,7 +41,9 @@ This should return information about whether the file is recorded inside the
 cache and whether it was updated or not.
 */
 cache_check :: proc(ic: ^Cache, filename: string) -> Cache_Status {
-    return ic._impl_check(ic.ctx, filename)
+    status := ic._impl_check(ic.ctx, filename)
+    printfln_verbose("* File '%s' status: %v", filename, status)
+    return status
 }
 
 Fs_Cache_Rec :: struct {

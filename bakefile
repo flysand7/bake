@@ -33,6 +33,6 @@ func 'cli' build(args) {
 
     # Build and run
     bake-build([exe-name])
-    cmd(exe-name, 1, 2, 3)
+    cmd([exe-name, 1, 2, 3])
 }
 
