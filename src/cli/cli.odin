@@ -43,6 +43,7 @@ package bake_cli
 
 import "core:os"
 import "core:strings"
+import "core:fmt"
 
 /*
     Specifies the type of error, related to a command-line argument.
@@ -269,7 +270,7 @@ parse_args :: proc(schema: Schema, os_args: []string, a := context.allocator) ->
             }
             return {}, err
         }
-        opts[opt_schema.name] = arg[opt_sep_idx+1:]
+        opts[opt_schema.name] = opt_value
     }
     for s in schema.opts {
         if s.name not_in opts {
