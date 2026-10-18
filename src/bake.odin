@@ -24,7 +24,9 @@ Available options:
                     default: './bakefile'
   -cache:<path>     Specify an alternative path to bake cache.
                     default: './.bake-cache'
-  -no-colors        Prevent ANSI printing colors.
+  -colors           When the output of bake is redirected, bake doesn't output
+                    any ansi colors. Use this option to force using ANSI colors,
+                    even when the output is redirected.
 `
 
 Bake_Config :: struct {
@@ -146,7 +148,7 @@ main :: proc() {
         opts = []cli.Opt_Schema {
             cli.opt_schema(.Boolean, "-help", {"-h", "--help"}),
             cli.opt_schema(.Boolean, "-verbose", {"-v"}),
-            cli.opt_schema(.Boolean, "-no-colors"),
+            cli.opt_schema(.Boolean, "-colors"),
             cli.opt_schema(.String,  "-bakefile"),
             cli.opt_schema(.String,  "-cache"),
         }
@@ -172,9 +174,9 @@ main :: proc() {
         printfln_color("* Run `bake -help` to get more details about the command line syntax.")
         os.exit(2)
     }
-    if cl.opts["-no-colors"].(bool) {
-        cli.config.stderr_color = false
-        cli.config.stdout_color = false
+    if cl.opts["-colors"].(bool) {
+        cli.config.stderr_color = true
+        cli.config.stdout_color = true
     }
     if cl.opts["-help"].(bool) {
         if cli.config.stdout_color {
