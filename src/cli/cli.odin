@@ -236,7 +236,7 @@ parse_args :: proc(schema: Schema, os_args: []string, a := context.allocator) ->
             continue
         }
         if arg == "--" {
-            targs_sep_idx = i
+            targs_sep_idx = 1+i
             break
         }
         // Find out option name

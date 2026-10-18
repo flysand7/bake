@@ -143,7 +143,6 @@ printfln_color :: proc(fmt_string: string, args: ..any) {
 }
 
 main :: proc() {
-    extra_args_idx := Maybe(int) {}
     cl_schema := cli.Schema {
         opts = []cli.Opt_Schema {
             cli.opt_schema(.Boolean, "-help", {"-h", "--help"}),
@@ -207,12 +206,6 @@ main :: proc() {
         os.exit(2)
     }
     printfln_verbose("Bakefile Target: '%s'", bake_config.bakefile_target)
-    extra_args := make([dynamic]string)
-    if start_idx, ok := extra_args_idx.?; ok {
-        for arg, arg_idx in os.args[start_idx+1:] {
-            append(&extra_args, arg)
-        }
-    }
     if len(bake_config.bakefile_path) == 0 {
         bake_config.bakefile_path = find_bakefile()
         if len(bake_config.bakefile_path) == 0 {
@@ -231,10 +224,6 @@ main :: proc() {
     stmts := parse_stmts(&parser)
     printfln_verbose("Running the bake script...")
     ctx := exec_stmts(transmute(string) bakefile_bytes, stmts)
-    cli_args := make([dynamic]Value)
-    for arg in extra_args[:] {
-        append(&cli_args, arg)
-    }
     mb_value := env_get(ctx.global_env, bake_config.bakefile_target)
     printfln_verbose("Finding the target function '%s'...", bake_config.bakefile_target)
     if value, ok := mb_value.?; !ok {
@@ -247,6 +236,10 @@ main :: proc() {
         os.exit(1)
     } else {
         printfln_verbose("Executing the target function '%s'...", bake_config.bakefile_target)
+        cli_args := make([dynamic]Value)
+        for arg in cl.targs[:] {
+            append(&cli_args, arg)
+        }
         ret, err := call_func(&ctx, ctx.global_env, value.(Stmt_Func), []Value{cli_args[:]})
         if tok, ok := err.(Call_Func_Err_CF_Token); ok && tok.tok != nil {
             printfln_error(
