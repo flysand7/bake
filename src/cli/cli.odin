@@ -124,6 +124,7 @@ Opt_Schema :: struct {
     name: string,
     aliases: []string,
     type: Schema_Opt_Type,
+    default: Maybe(Opt_Value),
 }
 
 /*
@@ -133,11 +134,17 @@ Schema :: struct {
     opts: []Opt_Schema,
 }
 
-opt_schema :: proc(type: Schema_Opt_Type, name: string, aliases: []string = {}) -> Opt_Schema {
+opt_schema :: proc(
+    type: Schema_Opt_Type,
+    name: string,
+    aliases: []string = {},
+    default: Maybe(Opt_Value) = nil,
+) -> Opt_Schema {
     return {
         name = name,
         aliases = aliases,
         type = type,
+        default = default,
     }
 }
 
@@ -172,6 +179,49 @@ init :: proc() {
 }
 
 /*
+    Parse the user-supplied option value according to the schema.
+*/
+parse_opt_value :: proc(
+    schema: Opt_Schema,
+    user_value: Maybe(string),
+    arg: string,
+    opt_name: string,
+) -> (Opt_Value, Error) {
+    if user_value != nil {
+        switch schema.type {
+        case .String: return user_value.?, {}
+        case .Boolean:
+            switch user_value.? {
+            case "true": return true, {}
+            case "false": return false, {}
+            case:
+                err := Error {
+                    kind = .Opt_Invalid_Value,
+                    arg = arg,
+                    opt_name = opt_name,
+                }
+                return {}, err
+            }
+        }
+    }
+    if schema.default != nil {
+        return schema.default.(Opt_Value), {}
+    }
+    switch schema.type {
+    case .String:
+        err := Error {
+            kind = .Opt_No_Value,
+            arg = arg,
+            opt_name = opt_name,
+        }
+        return {}, err
+    case .Boolean:
+        return true, {}
+    }
+    panic("Didn't expect to reach here")
+}
+
+/*
     Parse the command line into an appropriate data structure.
 */
 parse_args :: proc(schema: Schema, os_args: []string, a := context.allocator) -> (Args, Error) {
@@ -189,50 +239,18 @@ parse_args :: proc(schema: Schema, os_args: []string, a := context.allocator) ->
             targs_sep_idx = i
             break
         }
+        // Find out option name
+        opt_name: string = ---
         opt_sep_idx := strings.index_byte(arg, ':')
         if opt_sep_idx == -1 {
-            opt_name := arg
-            opt_schema, opt_schema_ok := find_opt_schema(schema, opt_name)
-            if !opt_schema_ok {
-                err := Error {
-                    kind = .Opt_Unknown,
-                    arg = arg,
-                    opt_name = opt_name,
-                }
-                return {}, err
-            }
-            if opt_schema.type != .Boolean {
-                err := Error {
-                    kind = .Opt_No_Value,
-                    arg = arg,
-                    opt_name = opt_name,
-                }
-                return {}, err
-            }
-            if opt_schema.name in opts {
-                err := Error {
-                    kind = .Opt_Already_Specified,
-                    arg = arg,
-                    opt_name = opt_name,
-                }
-                return {}, err
-            }
-            opts[opt_schema.name] = true
-            continue
+            opt_name = arg
+        } else {
+            opt_name = arg[:opt_sep_idx]
         }
-        opt_name := arg[:opt_sep_idx]
         if len(opt_name) == 0 {
             err := Error {
                 kind = .Opt_No_Name,
                 arg = arg,
-            }
-            return {}, err
-        }
-        if opt_sep_idx+1 == len(arg) {
-            err := Error {
-                kind = .Opt_No_Value,
-                arg = arg,
-                opt_name = opt_name,
             }
             return {}, err
         }
@@ -253,29 +271,24 @@ parse_args :: proc(schema: Schema, os_args: []string, a := context.allocator) ->
             }
             return {}, err
         }
-        if opt_schema.type == .String {
-            opts[opt_schema.name] = arg[opt_sep_idx+1:]
-            continue
+        user_value: Maybe(string) = nil
+        if opt_sep_idx != -1 {
+            user_value = arg[opt_sep_idx+1:]
         }
-        opt_value: Opt_Value = ---
-        opt_expect_type: Schema_Opt_Type = ---
-        switch arg[opt_sep_idx+1:] {
-        case "true": opt_value = true
-        case "false": opt_value = false
-        case:
-            err := Error {
-                kind = .Opt_Invalid_Value,
-                arg = arg,
-                opt_name = opt_name,
-            }
-            return {}, err
+        opt_value, opt_value_err := parse_opt_value(opt_schema, user_value, arg, opt_name)
+        if opt_value_err.kind != nil {
+            return {}, opt_value_err
         }
-        opts[opt_schema.name] = opt_value
+        opts[opt_name] = opt_value
     }
     for s in schema.opts {
         if s.name not_in opts {
-            if s.type == .Boolean {
-                opts[s.name] = false
+            if s.default != nil {
+                opts[s.name] = s.default.?
+            } else {
+                if s.type == .Boolean {
+                    opts[s.name] = false
+                }
             }
         }
     }
