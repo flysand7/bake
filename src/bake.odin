@@ -220,10 +220,10 @@ main :: proc() {
         os.exit(1)
     }
     init_builtins()
-    parser := parser_make(transmute(string) bakefile_bytes)
+    parser := parser_make(bake_config.bakefile_path, transmute(string) bakefile_bytes)
     stmts := parse_stmts(&parser)
     printfln_verbose("Running the bake script...")
-    ctx := exec_stmts(transmute(string) bakefile_bytes, stmts)
+    ctx := exec_stmts(bake_config.bakefile_path, transmute(string) bakefile_bytes, stmts)
     mb_value := env_get(ctx.global_env, bake_config.bakefile_target)
     printfln_verbose("Finding the target function '%s'...", bake_config.bakefile_target)
     if value, ok := mb_value.?; !ok {
