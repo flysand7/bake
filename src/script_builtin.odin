@@ -109,6 +109,7 @@ builtin_recipe :: proc(ctx: ^Ctx, args: []Value) -> Value {
         str := value_to_str(el)
         append(&outputs_strs, str)
     }
+    printfln_verbose("ADD BAKE-RECIPE: %s", cmd_arrs)
     append(&ctx.tasks, Recipe {
         cmds = cmd_arrs[:],
         inputs = inputs_strs[:],
@@ -131,6 +132,7 @@ builtin_build :: proc(ctx: ^Ctx, args: []Value) -> Value {
         str := value_to_str(v)
         append(&files_strs, str)
     }
+    printfln_verbose("RUN BAKE-BUILD...")
     build(ctx.tasks[:], files_strs[:])
     return nil
 }

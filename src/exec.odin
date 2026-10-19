@@ -17,6 +17,7 @@ run_cmd :: proc(command: Cmd) -> (int, Exec_Error) {
         // TODO(flysand): Support string cmdline arguments to run_cmd.
         panic("Running via cmdline is temporarily not supported")
     case []string:
+        printfln_verbose("RUN COMMAND: %v", cmd)
         return run_system_cmd(cmd)
     }
     unreachable()

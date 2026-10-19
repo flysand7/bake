@@ -30,6 +30,7 @@ Cache a file.
 This should record the requested file's information inside the cache.
 */
 cache_file :: proc(ic: ^Cache, filename: string) {
+    printfln_verbose("* Cached file: '%s'", filename)
     ic._impl_file(ic.ctx, filename)
 }
 
@@ -40,7 +41,9 @@ This should return information about whether the file is recorded inside the
 cache and whether it was updated or not.
 */
 cache_check :: proc(ic: ^Cache, filename: string) -> Cache_Status {
-    return ic._impl_check(ic.ctx, filename)
+    status := ic._impl_check(ic.ctx, filename)
+    printfln_verbose("* File '%s' status: %v", filename, status)
+    return status
 }
 
 Fs_Cache_Rec :: struct {
@@ -53,11 +56,11 @@ Fs_Cache :: struct {
 }
 
 fs_cache_open :: proc() -> Cache {
-    bytes, err := os.read_entire_file(".bake-cache", context.allocator)
+    bytes, err := os.read_entire_file(bake_config.bakefile_target, context.allocator)
     cache := new(Fs_Cache)
     cache.recs = make([dynamic]Fs_Cache_Rec)
     if err != nil {
-        // If the .bake-cache file doesn't exist, this behaves like cache_make.
+        // If the cache file doesn't exist, this behaves like cache_make.
         return _fs_cache_impl(cache)
     }
     prev_recs := slice.reinterpret([]Fs_Cache_Rec, bytes)
@@ -110,7 +113,7 @@ fs_cache_write :: proc(cache: ^Cache) {
     perm := os.Permissions {
         .Read_Other, .Read_Group, .Read_User, .Write_User
     }
-    err := os.write_entire_file(".bake-cache", bytes, perm)
+    err := os.write_entire_file(bake_config.bakefile_target, bytes, perm)
     assert(err == nil)
 }
 

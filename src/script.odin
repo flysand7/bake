@@ -21,7 +21,8 @@ Env :: struct {
 }
 
 Ctx :: struct {
-    text: string,
+    file_path: string,
+    file_text: string,
     tasks: [dynamic]Recipe,
     global_env: ^Env,
     ret_stack: [dynamic]Value,
@@ -34,7 +35,27 @@ CF_Token :: enum {
     Return,
 }
 
+cf_token_names: [CF_Token]string = {
+    .None = "",
+    .Break = "break",
+    .Continue = "continue",
+    .Return = "return",
+}
+
 builtin_map := map[string]Builtin_Func {}
+
+value_type :: proc(v: Value) -> string {
+    switch x in v {
+    case i64: return "int"
+    case string: return "string"
+    case Stmt_Func: return "function"
+    case Builtin_Func: return "function"
+    case []Value: return "array"
+    case map[string]Value: return "dict"
+    case ^Value: return value_type(x^)
+    }
+    unreachable()
+}
 
 value_is_ref :: proc(v: Value) -> bool {
     if _, isref := v.(^Value); isref {
@@ -192,13 +213,14 @@ value_to_bool :: proc(value: Value) -> bool {
     }
 }
 
-ctx_make :: proc(text: string) -> Ctx {
+ctx_make :: proc(file_path: string, file_text: string) -> Ctx {
     global_env := env_make(nil)
     return {
-        text,
-        make([dynamic]Recipe),
-        global_env,
-        make([dynamic]Value),
+        file_text = file_text,
+        file_path = file_path,
+        global_env = global_env,
+        ret_stack = make([dynamic]Value),
+        tasks = make([dynamic]Recipe),
     }
 }
 
@@ -241,22 +263,22 @@ env_set :: proc(env: ^Env, name: string, value: Value) {
 env_declare :: proc(ctx: ^Ctx, loc: Loc, env: ^Env, name: string, value: Value) {
     for builtin_name in builtin_map {
         if name == builtin_name {
-            script_errorf(ctx, loc, "Shadowing of a built-in ('%s') is not allowed", name)
+            script_error(error_builtin_shadowing(ctx, loc, builtin_name))
         }
     }
     if name in env.scope {
-        script_errorf(ctx, loc, "Shadowing of a variable in the same scope ('%s') is now allowed", name)
+        script_error(error_shadowing(ctx, loc, name))
     }
     env.scope[name] = value
 }
 
-exec_stmts :: proc(text: string, stmts: []^Stmt) -> Ctx {
-    ctx := ctx_make(text)
+exec_stmts :: proc(file_path: string, file_text: string, stmts: []^Stmt) -> Ctx {
+    ctx := ctx_make(file_path, file_text)
     env := ctx.global_env
     for stmt in stmts {
         cf_token := exec_stmt(&ctx, env, stmt)
         if cf_token != nil {
-            script_errorf(&ctx, stmt.loc, "Control flow expression not allowed in global scope: %v", cf_token)
+            script_error(error_control_flow_outside_loop(&ctx, stmt.loc, cf_token_names[cf_token]))
         }
     }
     return ctx
@@ -331,7 +353,7 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
         if value, ok := value.?; ok {
             return value
         }
-        script_errorf(ctx, expression.loc, "Value %s is not defined in the current scope", expr.name)
+        script_error(error_undeclared_identifier(ctx, expression.loc, expr.name))
     case Expr_Unary:
         switch expr.op {
         case .Not:
@@ -350,7 +372,7 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
                 value = value_deref(value)
                 target := eval_expr(ctx, env, expr.lhs)
                 if !value_is_ref(target) {
-                    script_errorf(ctx, expression.loc, "Assignment target is not an lvalue")
+                    script_error(error_invalid_assignment_target(ctx, expression.loc))
                 }
                 target.(^Value)^ = value
             }
@@ -369,26 +391,25 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
             append(&evaluated_args, value_deref(eval_expr(ctx, env, arg)))
         }
         if expr.fn.name == "assert" {
-            intrinsic_assert(expression.loc, ctx.text, evaluated_args[:])
+            intrinsic_assert(expression.loc, ctx.file_text, evaluated_args[:])
             return nil
         }
         mb_val := env_get(env, expr.fn.name)
-        func := Stmt_Func{}
         if val, ok := mb_val.?; !ok {
-            script_errorf(ctx, expression.loc, "Value %s is not defined", expr.fn.name)
+            script_error(error_undeclared_identifier(ctx, expression.loc, expr.fn.name))
         } else if fn, ok := val.(Stmt_Func); ok {
             ret, err := call_func(ctx, env, fn, evaluated_args[:])
             if tok, ok := err.(Call_Func_Err_CF_Token); ok {
-                script_errorf(ctx, expression.loc, "Cotrol flow statement used outside of while loop: %v", tok)
+                script_error(error_control_flow_outside_loop(ctx, expression.loc, cf_token_names[tok.tok]))
             } else if _, ok := err.(Call_Func_Err_Param_Mismatch); ok {
-                script_errorf(ctx, expression.loc, "Argument count mismatch: expected %d, got %d", len(func.params), len(evaluated_args))
+                script_error(error_argument_count_mismatch(ctx, expression.loc, fn.name.name, len(fn.params), len(evaluated_args)))
             } else {
                 return ret
             }
         } else if fn, ok := val.(Builtin_Func); ok {
             return fn(ctx, evaluated_args[:])
         } else {
-            script_errorf(ctx, expression.loc, "Value %s is not callable")
+            script_error(error_call_non_func(ctx, expression.loc, val))
         }
     case Expr_Array:
         values := make([dynamic]Value)
@@ -446,7 +467,7 @@ eval_binary_op :: proc(
     rhs: Value,
 ) -> Value {
     if value_is_any_func(lhs) || value_is_any_func(rhs) {
-        script_errorf(ctx, op_loc, "Functions don't support binary operations")
+        script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
     }
     #partial switch op {
         case .And:
@@ -485,25 +506,25 @@ eval_binary_op :: proc(
         case .Div:
             if value_is_int(lhs) && value_is_int(rhs) {
                 if rhs.(i64) == 0 {
-                    script_errorf(ctx, op_loc, "Division by zero")
+                    script_error(error_division_by_zero(ctx, op_loc))
                 }
                 return lhs.(i64) / rhs.(i64)
             } else if value_is_str(lhs) && value_is_str(rhs) {
                 return fmt.tprint(lhs.(string), '/', rhs.(string), sep="")
             } else {
-                script_errorf(ctx, op_loc, "Operation '/' does not work for provided types")
+                script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
             }
         case .Sub:
             if value_is_int(lhs) && value_is_int(rhs) {
                 return rhs.(i64) - lhs.(i64)
             } else {
-                script_errorf(ctx, op_loc, "Operation '->' does not work for provided types")
+                script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
             }
         case .Mul:
             if value_is_int(lhs) && value_is_int(rhs) {
                 return lhs.(i64) * rhs.(i64)
             } else {
-                script_errorf(ctx, op_loc, "Operation '*' does not work for provided types")
+                script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
             }
         case .Eq:
             if !value_is_nil(lhs) && !value_is_nil(rhs) {
@@ -527,7 +548,7 @@ eval_binary_op :: proc(
                     rhs_s := value_to_str(rhs)
                     return i64(lhs_s == rhs_s)
                 } else {
-                    script_errorf(ctx, op_loc, "Operation '==' does not work for provided types")
+                    script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
                 }
             } else {
                 return i64(value_is_nil(lhs) == value_is_nil(rhs))
@@ -554,7 +575,7 @@ eval_binary_op :: proc(
                     rhs_s := value_to_str(rhs)
                     return i64(lhs_s != rhs_s)
                 } else {
-                    script_errorf(ctx, op_loc, "Operation '!=' does not work for provided types")
+                    script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
                 }
             } else {
                 return i64(value_is_nil(lhs) != value_is_nil(rhs))
@@ -570,7 +591,7 @@ eval_binary_op :: proc(
                 rhs_s := value_to_str(rhs)
                 return i64(lhs_s >= rhs_s)
             } else {
-                script_errorf(ctx, op_loc, "Operation '>=' does not work for provided types")
+                script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
             }
         case .Gt:
             if value_is_nil(lhs) || value_is_nil(rhs) {
@@ -583,7 +604,7 @@ eval_binary_op :: proc(
                 rhs_s := value_to_str(rhs)
                 return i64(lhs_s > rhs_s)
             } else {
-                script_errorf(ctx, op_loc, "Operation '>' does not work for provided types")
+                script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
             }
         case .Le:
             if value_is_nil(lhs) || value_is_nil(rhs) {
@@ -596,7 +617,7 @@ eval_binary_op :: proc(
                 rhs_s := value_to_str(rhs)
                 return i64(lhs_s <= rhs_s)
             } else {
-                script_errorf(ctx, op_loc, "Operation '<=' does not work for provided types")
+                script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
             }
         case .Lt:
             if value_is_nil(lhs) || value_is_nil(rhs) {
@@ -609,7 +630,7 @@ eval_binary_op :: proc(
                 rhs_s := value_to_str(rhs)
                 return i64(lhs_s < rhs_s)
             } else {
-                script_errorf(ctx, op_loc, "Operation '<' does not work for provided types")
+                script_error(error_binary_op_not_applicable(ctx, op_loc, op, lhs, rhs))
             }
         case .Nvl:
             if !value_is_nil(lhs) {
@@ -620,12 +641,12 @@ eval_binary_op :: proc(
         case .Subscript:
             if value_is_arr(lhs) {
                 if !value_is_int(rhs) {
-                    script_errorf(ctx, op_loc, "Attempt to subscript array with non-integer type")
+                    script_error(error_subscript_invalid_type(ctx, op_loc, rhs))
                 }
                 arr := lhs.([]Value)
                 index := rhs.(i64)
                 if index < 0 || auto_cast len(arr) <= index {
-                    script_errorf(ctx, op_loc, "Out of bounds array access")
+                    script_error(error_out_of_bounds(ctx, op_loc, int(index), len(arr)))
                 }
                 return &arr[index]
             } else if value_is_map(lhs) {
@@ -637,14 +658,14 @@ eval_binary_op :: proc(
                     return m[v]
                 }
             } else {
-                script_errorf(ctx, op_loc, "Can only subscript an array or a dict")
+                script_error(error_subscript_not_applicable(ctx, op_loc, lhs))
             }
         case .Member:
             // TODO: error handling of type of un
             dict := lhs.(map[string]Value)
             key := value_to_str(rhs)
             if key not_in dict {
-                script_errorf(ctx, op_loc, "Key '%s' not in the dictionary", key)
+                script_error(error_dict_key_missing(ctx, op_loc, key))
             }
             return &dict[key]
         case: unreachable()
