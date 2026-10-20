@@ -1,38 +1,64 @@
 
 let options = {
     debug = false,
-    build_mode = 'exe',
-}
-
-
-options.debug = true
-
-let isd = options.debug
-print("Is debug: ${isd}\n")
-
-# Recipe for building C files
-func compile(input, output) {
-    bake-recipe(
-        [
-            ['clang.exe', input, '-o', output],
-        ],
-        [input],
-        [output],
-    )
 }
 
 func 'cli' build(args) {
-    print('* executing build\n')
-    if len(args) < 1 {
-        print("Syntax: build <exe-name>\n")
-        assert(false)
+    print('* Building bake\n')
+    {
+        var i = 0
+        for i < len(args) {
+            if args[i] == '-debug' {
+                options.debug = true
+            }
+            i = i + 1
+        }
     }
-    let exe-name = args[0]
-    # Create the recipe
-    compile('testing/print-args.c', exe-name)
+    if options.debug {
+        print('-> mode: debug\n')
+    } else {
+        print('-> mode: release\n')
+    }
+    let exe_name = 'bake.exe'
+    let odin_args = []
+    if options.debug {
+        odin_args = odin_args + [ '-debug' ]
+    }
+    bake-recipe(
+        [
+            ['odin', 'build', 'src', '-out:' + exe_name] + odin_args,
+        ],
+        [
+            'src/cli/atty.odin',
+            'src/cli/cli.odin',
+            'src/cli/color.odin',
+            'src/bake.odin',
+            'src/bakefile.odin',
+            'src/build.odin',
+            'src/cache.odin',
+            'src/exec.odin',
+            'src/file_windows.odin',
+            'src/parser.odin',
+            'src/script_builtin.odin',
+            'src/script_error.odin',
+            'src/script.odin',
+        ],
+        [ exe_name ],
+    )
+    bake-build([ exe_name ])
+}
 
-    # Build and run
-    bake-build([exe-name])
-    cmd([exe-name, 1, 2, 3])
+func 'cli' test_print_args(args) {
+    print('* Building testing/print-args.c\n')
+    bake-recipe(
+        [
+            ['clang', 'testing/print-args.c', '-o', 'a.exe'],
+        ],
+        [ 'testing/print-args.c' ],
+        [ 'a.exe' ],
+    )
+    bake-build([ 'a.exe' ])
+    print('* Program built. Executing...\n')
+    cmd(['./a.exe'])
 }
 
