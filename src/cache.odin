@@ -18,20 +18,25 @@ Cache_Status :: enum {
 Cache :: struct {
     // Context to store cached data.
     ctx: rawptr,
-    // The `cache_file` procedure implementation.
-    _impl_file: proc(ctx: rawptr, filename: string),
+    // The `cache_update` procedure implementation.
+    _impl_update: proc(ctx: rawptr, filename: string),
     // The `cache_check` procedure implementation.
     _impl_check: proc(ctx: rawptr, filename: string) -> Cache_Status,
 }
 
 /*
-Cache a file.
+Cache a file or update its state inside the cache.
 
 This should record the requested file's information inside the cache.
+Information, that is necessary to tell whether or not file was changed, at some
+later point will be recorded inside `ic`. If the file is new, a new cache
+record will be created. If the file already exists inside the cache at the point
+of calling this function, the cache record will be overwritten with the new
+information.
 */
-cache_file :: proc(ic: ^Cache, filename: string) {
+cache_update :: proc(ic: ^Cache, filename: string) {
     printfln_verbose("* Cached file: '%s'", filename)
-    ic._impl_file(ic.ctx, filename)
+    ic._impl_update(ic.ctx, filename)
 }
 
 /*
@@ -74,14 +79,16 @@ fs_cache_make :: proc() -> Cache {
     return _fs_cache_impl(cache)
 }
 
-fs_cache_file :: proc(cache: rawptr, filename: string) {
+fs_cache_update :: proc(cache: rawptr, filename: string) {
     cache := cast(^Fs_Cache) cache
-    id, file_ts, ok := file_get_id(filename)
-    // TODO(flysand, 2026-03-22): Check if the file is already cached. Currently
-    // the cache is created either for reading or writing, but not both. At some
-    // point would want to move onto one cache for both reading AND writing, which
-    // will avoid unnecessary looping over the DAG.
-    append(&cache.recs, Fs_Cache_Rec { id, file_ts })
+    file_id, file_ts, ok := file_get_id(filename)
+    for &rec in cache.recs {
+        if rec.id == file_id {
+            rec.ts = file_ts
+            return
+        }
+    }
+    append(&cache.recs, Fs_Cache_Rec { file_id, file_ts })
 }
 
 fs_cache_check :: proc(cache: rawptr, filename: string) -> Cache_Status {
@@ -100,8 +107,6 @@ fs_cache_check :: proc(cache: rawptr, filename: string) -> Cache_Status {
         }
     }
     if file_ts > rec.ts {
-        // TODO(flysand, 2026-03-22): This could also update the cache record
-        // inside the cache records maybe?
         return .Updated
     }
     return .Unchanged
@@ -120,7 +125,7 @@ fs_cache_write :: proc(cache: ^Cache) {
 _fs_cache_impl :: proc(fs_cache: ^Fs_Cache) -> Cache {
     return Cache {
         ctx = fs_cache,
-        _impl_file = fs_cache_file,
+        _impl_update = fs_cache_update,
         _impl_check = fs_cache_check,
     }
 }
@@ -139,13 +144,13 @@ test_cache_make :: proc(recs: []Test_Cache_Rec) -> Cache {
     cache.recs = recs
     return Cache {
         ctx = cache,
-        _impl_file = test_cache_file,
+        _impl_update = test_cache_update,
         _impl_check = test_cache_check,
     }
 }
 
-test_cache_file :: proc(cache: rawptr, filename: string) {
-    panic("test_cache_file can't cache new files.")
+test_cache_update :: proc(cache: rawptr, filename: string) {
+    panic("test_cache_update can't cache new files.")
 }
 
 test_cache_check :: proc(cache: rawptr, filename: string) -> Cache_Status {

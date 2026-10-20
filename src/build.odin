@@ -179,9 +179,8 @@ build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string
     return plan[:]
 }
 
-execute_plan :: proc(plan: []Exec_Task) {
+execute_plan :: proc(cache: ^Cache, plan: []Exec_Task) {
     had_errors := false
-    cache := fs_cache_make()
     for task, idx in plan {
         for cmd in task.cmds {
             code, err := run_cmd(cmd)
@@ -199,18 +198,18 @@ execute_plan :: proc(plan: []Exec_Task) {
             }
         }
         for output in task.outputs {
-            cache_file(&cache, output)
+            cache_update(cache, output)
         }
         for input in task.inputs {
-            cache_file(&cache, input)
+            cache_update(cache, input)
         }
     }
-    fs_cache_write(&cache)
+    fs_cache_write(cache)
 }
 
 build :: proc(recipes: []Recipe, targets: []string) {
     cache := fs_cache_open()
     plan := build_execution_plan(&cache, recipes, targets)
-    execute_plan(plan)
+    execute_plan(&cache, plan)
 }
 
