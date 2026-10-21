@@ -390,14 +390,13 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
         for arg in expr.args {
             append(&evaluated_args, value_deref(eval_expr(ctx, env, arg)))
         }
-        if expr.fn.name == "assert" {
+        if ident, ok := expr.fn.un.(Identifier); ok && ident.name == "assert" {
             intrinsic_assert(expression.loc, ctx.file_text, evaluated_args[:])
             return nil
         }
-        mb_val := env_get(env, expr.fn.name)
-        if val, ok := mb_val.?; !ok {
-            script_error(error_undeclared_identifier(ctx, expression.loc, expr.fn.name))
-        } else if fn, ok := val.(Stmt_Func); ok {
+        fn_value := value_deref(eval_expr(ctx, env, expr.fn))
+        #partial switch fn in fn_value {
+        case Stmt_Func:
             ret, err := call_func(ctx, env, fn, evaluated_args[:])
             if tok, ok := err.(Call_Func_Err_CF_Token); ok {
                 script_error(error_control_flow_outside_loop(ctx, expression.loc, cf_token_names[tok.tok]))
@@ -406,10 +405,10 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
             } else {
                 return ret
             }
-        } else if fn, ok := val.(Builtin_Func); ok {
+        case Builtin_Func:
             return fn(ctx, evaluated_args[:])
-        } else {
-            script_error(error_call_non_func(ctx, expression.loc, val))
+        case:
+            script_error(error_call_non_func(ctx, expression.loc, fn_value))
         }
     case Expr_Array:
         values := make([dynamic]Value)
