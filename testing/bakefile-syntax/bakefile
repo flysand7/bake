@@ -53,21 +53,21 @@ assert(true implies false, '!! "Implies" operator doesn`t work')
 assert(true implies true, '!! "Implies" operator doesn`t work')
 let t2-fh = [1, 2, 3, 4, 5]
 let t2-sh = [6, 7, 8, 9, 10]
-let t2-full = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-let t2-empty = []
+let t2-full-arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let t2-empty-arr = []
 assert(len(t2-fh) == 5, 'Length of array is wrong')
-assert(len(t2-empty) == 0, 'Length of an empty array should be 0')
+assert(len(t2-empty-arr) == 0, 'Length of an empty array should be 0')
 assert(t2-fh[0] == 1, 'Subscript operator on array returns a wrong result')
-assert(t2-fh + t2-empty == t2-fh, 'Array concatenation with an empty array doesn`t work')
-assert(t2-fh + t2-sh == t2-full, 'Array concatenation doesn`t work')
-let t2-empty = {}
-let t2-full = {
+assert(t2-fh + t2-empty-arr == t2-fh, 'Array concatenation with an empty array doesn`t work')
+assert(t2-fh + t2-sh == t2-full-arr, 'Array concatenation doesn`t work')
+let t2-empty-dict = {}
+let t2-full-dict = {
     name = "bake",
     description = "An imperative build system",
     bullshit_counter = 0,
 }
-assert(t2-full["name"] == "bake", 'Subscript operator on dicts doesn`t work')
-assert(t2-full.name == "bake", 'Member operator doesn`t work')
+assert(t2-full-dict["name"] == "bake", 'Subscript operator on dicts doesn`t work')
+assert(t2-full-dict.name == "bake", 'Member operator doesn`t work')
 
 print('=> T3: EXPRESSIONS\n')
 assert(6 / nil??2 == 3, 'Nil check should be evaluated before division')
@@ -158,3 +158,4 @@ func t5-add2(a) {
 assert(t5-add2(3) == 6, 'The function doesn`t capture variables from the global scope')
 assert(t5-v == 3, 'The function didn`t mutate the global variable')
 
+func 'cli' build(args) {}
