@@ -383,7 +383,7 @@ error_argument_count_mismatch :: proc(ctx: ^Ctx, loc: Loc, f: string, expected: 
 }
 
 error_call_non_func :: proc(ctx: ^Ctx, loc: Loc, v: Value) -> Script_Error {
-    data := make([]Script_Error_Data, 3)
+    data := make([]Script_Error_Data, 1)
     data[0] = value_type(v)
     return {
         bakefile_path = ctx.file_path,
@@ -391,7 +391,7 @@ error_call_non_func :: proc(ctx: ^Ctx, loc: Loc, v: Value) -> Script_Error {
         type = .Runtime_Error,
         code = .Call_Non_Func,
         loc = loc,
-        data = nil,
+        data = data,
     }
 }
 

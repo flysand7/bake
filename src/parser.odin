@@ -96,7 +96,7 @@ Expr_Ternary :: struct {
 }
 
 Expr_Call :: struct {
-    fn: Identifier,
+    fn: ^Expr,
     args: []^Expr,
 }
 
@@ -644,42 +644,6 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
             return expr_make(ident_loc, Lit_Int{0})
         } else if ident.name == "nil" {
             return expr_make(ident_loc, Lit_Nil{})
-        }
-        lparen_token := p.token
-        if parser_op_match(p, .LParen) {
-            skip_newline(p)
-            args := make([dynamic]^Expr)
-            loc := p.token.loc
-            parse_next_ok := true
-            for !parser_op_is(p, .RParen) {
-                if !parse_next_ok {
-                    script_error(error_expected_token(p, Token_Operator.Comma, p.token))
-                }
-                if p.token.un == nil {
-                    script_error(error_unterminated_token(p, lparen_token, Token_Operator.RParen))
-                }
-                append(&args, parse_expr(p))
-                if !parser_op_match(p, .Comma) {
-                    parse_next_ok = false
-                }
-                skip_newline(p)
-            }
-            loc = merge_locs(loc, p.token.loc)
-            parser_op_expect(p, .RParen)
-            expr = expr_make(loc, Expr_Call {
-                fn = ident,
-                args = args[:],
-            })
-        } else if parser_op_match(p, .LBracket) {
-            loc := p.token.loc
-            rhs := parse_expr(p)
-            loc = merge_locs(loc, p.token.loc)
-            parser_op_expect(p, .RBracket)
-            expr = expr_make(loc, Expr_Binary {
-                op = .Subscript,
-                lhs = expr_make(ident_loc, ident),
-                rhs = rhs,
-            })
         } else {
             expr = expr_make(ident_loc, ident)
         }
@@ -756,12 +720,52 @@ parse_expr_simple :: proc(p: ^Parser) -> ^Expr {
 
 parse_expr_not_so_simple :: proc (p: ^Parser) -> ^Expr {
     lhs := parse_expr_simple(p)
-    for parser_op_match(p, .Dot) {
-        ident_loc := p.token.loc
-        if ident, ok := parser_token_match(p, Identifier); ok {
-            lhs = expr_make_binary_op(.Member, lhs, expr_make(ident_loc, Lit_String{ident.name}))
+    for {
+        if parser_op_match(p, .Dot) {
+            ident_loc := p.token.loc
+            if ident, ok := parser_token_match(p, Identifier); ok {
+                lhs = expr_make_binary_op(.Member, lhs, expr_make(ident_loc, Lit_String{ident.name}))
+            } else {
+                script_error(error_expected_token(p, Identifier, p.token))
+            }
+        } else if parser_op_is(p, .LParen) {
+            lparen_token := p.token
+            parser_token_next(p)
+            skip_newline(p)
+            args := make([dynamic]^Expr)
+            loc := p.token.loc
+            parse_next_ok := true
+            for !parser_op_is(p, .RParen) {
+                if !parse_next_ok {
+                    script_error(error_expected_token(p, Token_Operator.Comma, p.token))
+                }
+                if p.token.un == nil {
+                    script_error(error_unterminated_token(p, lparen_token, Token_Operator.RParen))
+                }
+                append(&args, parse_expr(p))
+                if !parser_op_match(p, .Comma) {
+                    parse_next_ok = false
+                }
+                skip_newline(p)
+            }
+            loc = merge_locs(loc, p.token.loc)
+            parser_op_expect(p, .RParen)
+            lhs = expr_make(loc, Expr_Call {
+                fn = lhs,
+                args = args[:],
+            })
+        } else if parser_op_match(p, .LBracket) {
+            loc := p.token.loc
+            rhs := parse_expr(p)
+            loc = merge_locs(loc, p.token.loc)
+            parser_op_expect(p, .RBracket)
+            lhs = expr_make(loc, Expr_Binary {
+                op = .Subscript,
+                lhs = lhs,
+                rhs = rhs,
+            })
         } else {
-            script_error(error_expected_token(p, Identifier, p.token))
+            break
         }
     }
     return lhs
