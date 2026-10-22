@@ -230,7 +230,7 @@ main :: proc() {
         printfln_error("Target function '%s' not declared in the script.", bake_config.bakefile_target)
         printfln_color("* Please declare function as `func 'cli' %s () {}`", bake_config.bakefile_target)
         os.exit(1)
-    } else if func, ok := value.(Stmt_Func); !ok {
+    } else if func, ok := value.(Bake_Func); !ok {
         printfln_error("Target '%s' is not a function.", bake_config.bakefile_target)
         printfln_color("* Please declare function as `func 'cli' %s () {}`", bake_config.bakefile_target)
         os.exit(1)
@@ -240,7 +240,7 @@ main :: proc() {
         for arg in cl.targs[:] {
             append(&cli_args, arg)
         }
-        ret, err := call_func(&ctx, ctx.global_env, value.(Stmt_Func), []Value{cli_args[:]})
+        ret, err := call_func(&ctx, value.(Bake_Func), []Value{cli_args[:]})
         if tok, ok := err.(Call_Func_Err_CF_Token); ok && tok.tok != nil {
             printfln_error(
                 "Control flow token '%s' used in the global scope.",

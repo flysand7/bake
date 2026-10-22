@@ -3,12 +3,20 @@ package bake
 import "core:fmt"
 import "core:strings"
 
+Bake_Func :: struct {
+    is_cli: bool,
+    name: Identifier,
+    params: []Func_Param,
+    body: ^Stmt,
+    env: ^Env,
+}
+
 Builtin_Func :: #type proc (ctx: ^Ctx, args: []Value) -> Value
 
 Value :: union {
     i64,
     string,
-    Stmt_Func,
+    Bake_Func,
     Builtin_Func,
     []Value,
     map[string]Value,
@@ -48,7 +56,7 @@ value_type :: proc(v: Value) -> string {
     switch x in v {
     case i64: return "int"
     case string: return "string"
-    case Stmt_Func: return "function"
+    case Bake_Func: return "function"
     case Builtin_Func: return "function"
     case []Value: return "array"
     case map[string]Value: return "dict"
@@ -119,7 +127,7 @@ value_is_map :: proc(v: Value) -> bool {
 
 value_is_func :: proc(v: Value) -> bool {
     v := value_deref(v)
-    if _, ok := v.(Stmt_Func); ok {
+    if _, ok := v.(Bake_Func); ok {
         return true
     }
     return false
@@ -189,7 +197,7 @@ value_to_str :: proc(value: Value) -> string {
             }
             fmt.sbprint(&sb, "]")
             return strings.to_string(sb)
-        case Stmt_Func:
+        case Bake_Func:
             return v.name.name
         case Builtin_Func:
             sb := strings.builder_make()
@@ -316,7 +324,14 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
             }
         }
     case Stmt_Func:
-        env_declare(ctx, stmt_loc, env, stmt.name.name, stmt)
+        fn_value := Bake_Func {
+            is_cli = stmt.is_cli,
+            name = stmt.name,
+            params = stmt.params,
+            body = stmt.body,
+            env = env,
+        }
+        env_declare(ctx, stmt_loc, env, stmt.name.name, fn_value)
     case []^Stmt:
         env := env_make(env)
         for stmt in stmt {
@@ -396,8 +411,8 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
         }
         fn_value := value_deref(eval_expr(ctx, env, expr.fn))
         #partial switch fn in fn_value {
-        case Stmt_Func:
-            ret, err := call_func(ctx, env, fn, evaluated_args[:])
+        case Bake_Func:
+            ret, err := call_func(ctx, fn, evaluated_args[:])
             if tok, ok := err.(Call_Func_Err_CF_Token); ok {
                 script_error(error_control_flow_outside_loop(ctx, expression.loc, cf_token_names[tok.tok]))
             } else if _, ok := err.(Call_Func_Err_Param_Mismatch); ok {
@@ -437,12 +452,12 @@ Call_Func_Err :: union {
     Call_Func_Err_CF_Token,
 }
 
-call_func :: proc(ctx: ^Ctx, env: ^Env, fn: Stmt_Func, args: []Value) -> (Value, Call_Func_Err) {
+call_func :: proc(ctx: ^Ctx, fn: Bake_Func, args: []Value) -> (Value, Call_Func_Err) {
     if len(args) != len(fn.params) {
         return nil, Call_Func_Err_Param_Mismatch{}
     }
+    env := env_make(fn.env)
     append(&ctx.ret_stack, nil)
-    env := env_make(ctx.global_env)
     for p, i in fn.params {
         env_set(env, p.name.name, args[i])
     }
