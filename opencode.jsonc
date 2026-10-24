@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Guardrails only - AGENTS.md carries the project knowledge.
+  "permissions": [
+    { "action": "edit", "resource": "*.exe", "effect": "deny" },
+    { "action": "edit", "resource": "*.pdb", "effect": "deny" },
+    { "action": "edit", "resource": "*.rdi", "effect": "deny" },
+    { "action": "shell", "resource": "git add*", "effect": "deny" },
+    { "action": "shell", "resource": "git commit*", "effect": "deny" },
+    { "action": "shell", "resource": "git push*", "effect": "deny" }
+  ]
+}
