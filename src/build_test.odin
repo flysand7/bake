@@ -149,3 +149,32 @@ test_intermediate_output_change_pass :: proc(t: ^testing.T) {
     testing.expect_value(t, plan[0].cmds[0].(string), "odin build src -o:test.o -build-mode:obj")
     testing.expect_value(t, plan[1].cmds[0].(string), "llvm-ar xrv test.a test.o")
 }
+
+// If the input has changed, the downstream outputs must be invalidated and
+// recompiled.
+@(test)
+test_downstream_inputs_invalidation :: proc(t: ^testing.T) {
+    cache := test_cache_make([]Test_Cache_Rec {
+        Test_Cache_Rec { "a.txt", .Updated },
+        Test_Cache_Rec { "b.txt", .Unchanged },
+        Test_Cache_Rec { "c.txt", .Unchanged },
+    })
+    // Note(flysand): These are intentionally out of order to also test the
+    // sorting that build_execution_plan should perform.
+    recipes := []Recipe {
+        Recipe {
+            cmds = []Cmd { "a > b"},
+            inputs = []string { "a.txt" },
+            outputs = []string { "b.txt" },
+        },
+        Recipe {
+            cmds = []Cmd { "b > c" },
+            inputs = []string { "b.txt" },
+            outputs = []string { "c.txt" },
+        },
+    }
+    plan := build_execution_plan(&cache, recipes, { "c.txt" })
+    testing.expect_value(t, len(plan), 2)
+    testing.expect_value(t, plan[0].cmds[0].(string), "a > b")
+    testing.expect_value(t, plan[1].cmds[0].(string), "b > c")
+}

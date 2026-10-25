@@ -16,6 +16,8 @@
 *.ilk
 *.pdb
 
+*.log
+
 !bakefile
 
 /.bake-cache

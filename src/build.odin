@@ -135,20 +135,26 @@ build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string
     plan := make([dynamic]Exec_Task)
     for node, i in sorted_nodes {
         printfln_verbose("Considering graph node: %v", node.recipe.cmds)
-        need_rebuild := false
+        inputs_changed := false
         printfln_verbose("-> Checking recipe inputs...")
         for dependency in node.recipe.inputs {
             status := cache_check(cache, dependency)
             if status != .Unchanged {
-                need_rebuild = true
+                inputs_changed = true
             }
         }
-        if need_rebuild {
+        if inputs_changed {
             printfln_verbose("* Input(s) changed.")
         } else {
             printfln_verbose("* Input(s) are unchanged.")
         }
-        if !need_rebuild {
+        outputs_changed := false
+        if inputs_changed {
+            printfln_verbose("-> Invalidating outputs.")
+            for output in node.recipe.outputs {
+                cache_invalidate(cache, output)
+            }
+        } else {
             printfln_verbose("-> Checking recipe outputs...")
             for output in node.recipe.outputs {
                 status := cache_check(cache, output)
@@ -156,16 +162,16 @@ build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string
                     fmt.printfln("[WARNING]: Output %s unexpectedly changed since last rebuild. Rebuilding.", output)
                 }
                 if status != .Unchanged {
-                    need_rebuild = true
+                    outputs_changed = true
                 }
             }
-            if need_rebuild {
+            if outputs_changed {
                 printfln_verbose("* Output(s) changed.")
             } else {
                 printfln_verbose("* Output(s) are unchanged.")
             }
         }
-        if need_rebuild {
+        if inputs_changed || outputs_changed {
             printfln_verbose("* This recipe will be executed.")
             append(&plan, Exec_Task {
                 cmds = node.recipe.cmds,

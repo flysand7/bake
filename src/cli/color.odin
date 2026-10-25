@@ -22,7 +22,7 @@ strip_color :: proc(s: string, a := context.allocator) -> string {
             c = true
         } else if c && s[i] == 'm' {
             c = false
-        } else {
+        } else if !c {
             strings.write_byte(&sb, s[i])
         }
     }
