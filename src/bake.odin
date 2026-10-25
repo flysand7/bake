@@ -214,6 +214,7 @@ main :: proc() {
         }
     }
     printfln_verbose("Bakefile Path: '%s'", bake_config.bakefile_path)
+    printfln_verbose("Bake Cache: '%s'", bake_config.bake_cache_path)
     bakefile_bytes, bakefile_bytes_err := os.read_entire_file(bake_config.bakefile_path, context.temp_allocator)
     if bakefile_bytes_err != nil {
         printfln_error("Failed to open bakefile: '%s'\n", bake_config.bakefile_path)

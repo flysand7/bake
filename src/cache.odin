@@ -61,7 +61,7 @@ Fs_Cache :: struct {
 }
 
 fs_cache_open :: proc() -> Cache {
-    bytes, err := os.read_entire_file(bake_config.bakefile_target, context.allocator)
+    bytes, err := os.read_entire_file(bake_config.bake_cache_path, context.allocator)
     cache := new(Fs_Cache)
     cache.recs = make([dynamic]Fs_Cache_Rec)
     if err != nil {
@@ -118,8 +118,9 @@ fs_cache_write :: proc(cache: ^Cache) {
     perm := os.Permissions {
         .Read_Other, .Read_Group, .Read_User, .Write_User
     }
-    err := os.write_entire_file(bake_config.bakefile_target, bytes, perm)
+    err := os.write_entire_file(bake_config.bake_cache_path, bytes, perm)
     assert(err == nil)
+    printfln_verbose("CACHE WRITTEN: '%s'", bake_config.bake_cache_path)
 }
 
 _fs_cache_impl :: proc(fs_cache: ^Fs_Cache) -> Cache {
