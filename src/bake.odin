@@ -128,7 +128,7 @@ printfln_error :: proc(fmt_string: string, args: ..any) {
     } else {
         fmt.sbprintf(&sb, fmt_string, ..args)
     }
-    fmt.eprintf(strings.to_string(sb))
+    fmt.eprint(strings.to_string(sb))
 }
 
 printfln_color :: proc(fmt_string: string, args: ..any) {
@@ -136,9 +136,9 @@ printfln_color :: proc(fmt_string: string, args: ..any) {
     fmt.sbprintf(&sb, fmt_string, ..args)
     fmt.sbprintf(&sb, "\n")
     if cli.config.stdout_color {
-        fmt.printf(cli_recolor_string(strings.to_string(sb)))
+        fmt.print(cli_recolor_string(strings.to_string(sb)))
     } else {
-        fmt.printf(strings.to_string(sb))
+        fmt.print(strings.to_string(sb))
     }
 }
 
@@ -228,11 +228,11 @@ main :: proc() {
     printfln_verbose("Finding the target function '%s'...", bake_config.bakefile_target)
     if value, ok := mb_value.?; !ok {
         printfln_error("Target function '%s' not declared in the script.", bake_config.bakefile_target)
-        printfln_color("* Please declare function as `func 'cli' %s () {}`", bake_config.bakefile_target)
+        printfln_color("* Please declare function as `func 'cli' %s () {{}}`", bake_config.bakefile_target)
         os.exit(1)
     } else if func, ok := value.(Bake_Func); !ok {
         printfln_error("Target '%s' is not a function.", bake_config.bakefile_target)
-        printfln_color("* Please declare function as `func 'cli' %s () {}`", bake_config.bakefile_target)
+        printfln_color("* Please declare function as `func 'cli' %s () {{}}`", bake_config.bakefile_target)
         os.exit(1)
     } else {
         printfln_verbose("Executing the target function '%s'...", bake_config.bakefile_target)
