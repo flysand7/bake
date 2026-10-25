@@ -3,7 +3,9 @@
 Bake is the dynamically typed, imperative language used to write `bakefile`
 scripts. A script executes from top to bottom and emits build recipes; this
 document covers the language itself, not the command-line interface or the
-dependency graph.
+dependency graph. The build system -- recipes, targets, the dependency graph, and
+the cache -- is documented in
+[bake-build-system.md](bake-build-system.md).
 
 For a runnable tour of the syntax, see
 [`testing/bakefile-syntax/bakefile`](../testing/bakefile-syntax/bakefile).
