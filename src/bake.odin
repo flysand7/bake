@@ -69,7 +69,7 @@ cli_recolor_string :: proc(s: string) -> string {
         if s[i] == ' ' || s[i] == '\n' {
             spc = true
         }
-        if !(('a' <= s[i] && s[i] <= 'z') || ('A' <= s[i] && s[i] <= 'Z') || s[i] == '-') {
+        if arg && !(('a' <= s[i] && s[i] <= 'z') || ('A' <= s[i] && s[i] <= 'Z') || s[i] == '-') {
             arg = false
             strings.write_string(&sb, cli.COLOR_RESET)
         }
