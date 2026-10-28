@@ -49,7 +49,8 @@ assert(true or false, '!! "OR" operator doesn`t work')
 assert(true xor false, '!! "XOR" operator doesn`t work')
 assert(false xor true, '!! "XOR" operator doesn`t work')
 assert(false implies false, '!! "Implies" operator doesn`t work')
-assert(true implies false, '!! "Implies" operator doesn`t work')
+assert(!(true implies false), '!! "Implies" operator doesn`t work')
+assert(false implies true, '!! "Implies" operator doesn`t work')
 assert(true implies true, '!! "Implies" operator doesn`t work')
 let t2-fh = [1, 2, 3, 4, 5]
 let t2-sh = [6, 7, 8, 9, 10]
