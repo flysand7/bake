@@ -948,17 +948,19 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
             l := p.token.loc
             parser_token_next(p)
             if ident, ok := parser_token_is(p, Identifier); ok {
+                ident_loc := p.token.loc
                 parser_token_next(p)
-                expr := cast(^Expr) nil
                 if parser_op_match(p, .Assign) {
-                    expr = parse_expr(p)
+                    expr := parse_expr(p)
+                    expect_1_skip_newlines(p)
+                    return stmt_make(merge_locs(l, expr.loc), Stmt_Decl {
+                        mutable = false,
+                        name = ident,
+                        value = expr,
+                    })
+                } else {
+                    script_error(error_let_requires_initialization(p, merge_locs(l, ident_loc)))
                 }
-                expect_1_skip_newlines(p)
-                return stmt_make(merge_locs(l, expr.loc), Stmt_Decl {
-                    mutable = false,
-                    name = ident,
-                    value = expr,
-                })
             } else {
                 script_error(error_expected_token(p, Identifier, p.token))
             }
@@ -966,17 +968,23 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
             l := p.token.loc
             parser_token_next(p)
             if ident, ok := parser_token_is(p, Identifier); ok {
+                ident_loc := p.token.loc
                 parser_token_next(p)
-                expr := cast(^Expr) nil
                 if parser_op_match(p, Token_Operator.Assign) {
-                    expr = parse_expr(p)
+                    expr := parse_expr(p)
+                    expect_1_skip_newlines(p)
+                    return stmt_make(merge_locs(l, expr.loc), Stmt_Decl {
+                        mutable = false,
+                        name = ident,
+                        value = expr,
+                    })
+                } else {
+                    return stmt_make(l, Stmt_Decl {
+                        mutable = false,
+                        name = ident,
+                        value = expr_make(merge_locs(l, ident_loc), Lit_Nil {}),
+                    })
                 }
-                expect_1_skip_newlines(p)
-                return stmt_make(merge_locs(l, expr.loc), Stmt_Decl {
-                    mutable = false,
-                    name = ident,
-                    value = expr,
-                })
             } else {
                 script_error(error_expected_token(p, Identifier, p.token))
             }
