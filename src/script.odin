@@ -23,11 +23,6 @@ Value :: union {
     ^Value, // reference, created when doing e.g. `arr[i] = 2`
 }
 
-Env :: struct {
-    parent: ^Env,
-    scope: map[string]Value,
-}
-
 Ctx :: struct {
     file_path: string,
     file_text: string,
@@ -232,54 +227,6 @@ ctx_make :: proc(file_path: string, file_text: string) -> Ctx {
     }
 }
 
-env_make :: proc(parent: ^Env) -> ^Env {
-    env := new(Env)
-    env.parent = parent
-    env.scope = make(map[string]Value)
-    if parent == nil {
-        for builtin_name, builtin in builtin_map {
-            env_set(env, builtin_name, builtin)
-        }
-    }
-    return env
-}
-
-env_get :: proc(env: ^Env, name: string) -> Maybe(Value) {
-    env := env
-    for env != nil {
-        if name in env.scope {
-            return env.scope[name]
-        }
-        env = env.parent
-    }
-    return nil
-}
-
-env_set :: proc(env: ^Env, name: string, value: Value) {
-    start_env := env
-    env := start_env
-    for env != nil {
-        if name in env.scope {
-            env.scope[name] = value
-            return
-        }
-        env = env.parent
-    }
-    start_env.scope[name] = value
-}
-
-env_declare :: proc(ctx: ^Ctx, loc: Loc, env: ^Env, name: string, value: Value) {
-    for builtin_name in builtin_map {
-        if name == builtin_name {
-            script_error(error_builtin_shadowing(ctx, loc, builtin_name))
-        }
-    }
-    if name in env.scope {
-        script_error(error_shadowing(ctx, loc, name))
-    }
-    env.scope[name] = value
-}
-
 exec_stmts :: proc(file_path: string, file_text: string, stmts: []^Stmt) -> Ctx {
     ctx := ctx_make(file_path, file_text)
     env := ctx.global_env
@@ -301,7 +248,14 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
     case Stmt_Decl:
         value := eval_expr(ctx, env, stmt.value)
         value = value_deref(value)
-        env_declare(ctx, stmt_loc, env, stmt.name.name, value)
+        decl_err := env_declare(env, stmt.name.name, value, stmt.mutable)
+        switch decl_err {
+        case .None:
+        case .Shadowing: script_error(error_shadowing(ctx, stmt_loc, stmt.name.name))
+        case .Builtin_Shadowing: script_error(error_builtin_shadowing(ctx, stmt_loc, stmt.name.name))
+        case .Invalid_Mutation: unreachable()
+        case .Undeclared_Variable: unreachable()
+        }
     case Stmt_If:
         val := eval_expr(ctx, env, stmt.cond)
         if value_to_bool(val) {
@@ -331,7 +285,14 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
             body = stmt.body,
             env = env,
         }
-        env_declare(ctx, stmt_loc, env, stmt.name.name, fn_value)
+        decl_err := env_declare(env, stmt.name.name, fn_value, false)
+        switch decl_err {
+        case .None:
+        case .Builtin_Shadowing: script_error(error_builtin_shadowing(ctx, stmt_loc, stmt.name.name))
+        case .Shadowing: script_error(error_builtin_shadowing(ctx, stmt_loc, stmt.name.name))
+        case .Invalid_Mutation: unreachable()
+        case .Undeclared_Variable: unreachable()
+        }
     case []^Stmt:
         env := env_make(env)
         for stmt in stmt {
@@ -381,7 +342,14 @@ eval_expr :: proc(ctx: ^Ctx, env: ^Env, expression: ^Expr) -> Value {
             if ident, ok := expr.lhs.un.(Identifier); ok {
                 new_value := eval_expr(ctx, env, expr.rhs)
                 new_value = value_deref(new_value)
-                env_set(env, ident.name, new_value)
+                assign_err := env_set(env, ident.name, new_value)
+                switch assign_err {
+                case .None:
+                case .Undeclared_Variable: script_error(error_undeclared_identifier(ctx, expression.loc, ident.name))
+                case .Invalid_Mutation: script_error(error_invalid_mutation(ctx, expression.loc, ident.name))
+                case .Builtin_Shadowing: unreachable()
+                case .Shadowing: unreachable()
+                }
             } else {
                 value := eval_expr(ctx, env, expr.rhs)
                 value = value_deref(value)

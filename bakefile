@@ -41,6 +41,7 @@ func 'cli' build(args) {
             'src/parser.odin',
             'src/script_builtin.odin',
             'src/script_error.odin',
+            'src/script_env.odin',
             'src/script.odin',
         ],
         [ exe_name ],

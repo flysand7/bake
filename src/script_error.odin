@@ -40,6 +40,7 @@ Script_Error_Code :: enum {
     Subscript_Not_Applicable = 20,
     Out_Of_Bounds = 21,
     Dict_Key_Missing = 22,
+    Invalid_Mutation = 24,
 }
 
 Script_Error_Data :: union {
@@ -84,6 +85,7 @@ error_message_map: [Script_Error_Code]string = {
     .Out_Of_Bounds = "Out of bounds access of index $0 for array of length $1",
     .Dict_Key_Missing = "Key '$0' is missing in a dictionary",
     .Let_Requires_Initialization = "The 'let' statement requires an initial value",
+    .Invalid_Mutation = "Variable '$0' cannot be mutated"
 }
 
 format_error :: proc(e: Script_Error, a := context.allocator) -> string {
@@ -482,6 +484,19 @@ error_dict_key_missing :: proc(ctx: ^Ctx, loc: Loc, key: string) -> Script_Error
         bakefile_text = ctx.file_text,
         type = .Runtime_Error,
         code = .Dict_Key_Missing,
+        loc = loc,
+        data = data,
+    }
+}
+
+error_invalid_mutation :: proc(ctx: ^Ctx, loc: Loc, name: string) -> Script_Error {
+    data := make([]Script_Error_Data, 1)
+    data[0] = name
+    return {
+        bakefile_path = ctx.file_path,
+        bakefile_text = ctx.file_text,
+        type = .Runtime_Error,
+        code = .Invalid_Mutation,
         loc = loc,
         data = data,
     }
