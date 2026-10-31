@@ -303,6 +303,9 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
         }
     case Stmt_Return:
         val := eval_expr(ctx, env, stmt.expr)
+        if len(ctx.ret_stack) == 0 {
+            script_error(error_return_outside_func(ctx, stmt_loc))
+        }
         ctx.ret_stack[len(ctx.ret_stack)-1] = val
         return .Return
     case Stmt_Break:
