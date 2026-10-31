@@ -466,7 +466,7 @@ eval_binary_op :: proc(
         case .Xor:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
-            return i64(b1 ~~ b2)
+            return i64(b1 ~ b2)
         case .Implies:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
