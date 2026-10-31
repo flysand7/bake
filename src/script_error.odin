@@ -41,6 +41,7 @@ Script_Error_Code :: enum {
     Out_Of_Bounds = 21,
     Dict_Key_Missing = 22,
     Invalid_Mutation = 24,
+    Return_Outside_Func = 25,
 }
 
 Script_Error_Data :: union {
@@ -85,7 +86,8 @@ error_message_map: [Script_Error_Code]string = {
     .Out_Of_Bounds = "Out of bounds access of index $0 for array of length $1",
     .Dict_Key_Missing = "Key '$0' is missing in a dictionary",
     .Let_Requires_Initialization = "The 'let' statement requires an initial value",
-    .Invalid_Mutation = "Variable '$0' cannot be mutated"
+    .Invalid_Mutation = "Variable '$0' cannot be mutated",
+    .Return_Outside_Func = "The 'return' statement can only be used inside functions"
 }
 
 format_error :: proc(e: Script_Error, a := context.allocator) -> string {
@@ -499,6 +501,17 @@ error_invalid_mutation :: proc(ctx: ^Ctx, loc: Loc, name: string) -> Script_Erro
         code = .Invalid_Mutation,
         loc = loc,
         data = data,
+    }
+}
+
+error_return_outside_func :: proc(ctx: ^Ctx, loc: Loc) -> Script_Error {
+    return {
+        bakefile_path = ctx.file_path,
+        bakefile_text = ctx.file_text,
+        type = .Runtime_Error,
+        code = .Return_Outside_Func,
+        loc = loc,
+        data = nil,
     }
 }
 

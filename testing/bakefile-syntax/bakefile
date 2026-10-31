@@ -157,7 +157,7 @@ func t5-add(a, b) {
     return a + b
 }
 assert(t5-add(1,2) == 3, 'The function returned an incorrect value')
-let t5-v = 2
+var t5-v = 2
 func t5-add2(a) {
     t5-v = 3
     return a + t5-v

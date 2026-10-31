@@ -303,6 +303,9 @@ exec_stmt :: proc(ctx: ^Ctx, env: ^Env, stmt: ^Stmt) -> CF_Token {
         }
     case Stmt_Return:
         val := eval_expr(ctx, env, stmt.expr)
+        if len(ctx.ret_stack) == 0 {
+            script_error(error_return_outside_func(ctx, stmt_loc))
+        }
         ctx.ret_stack[len(ctx.ret_stack)-1] = val
         return .Return
     case Stmt_Break:
@@ -427,7 +430,7 @@ call_func :: proc(ctx: ^Ctx, fn: Bake_Func, args: []Value) -> (Value, Call_Func_
     env := env_make(fn.env)
     append(&ctx.ret_stack, nil)
     for p, i in fn.params {
-        env_set(env, p.name.name, args[i])
+        _ = env_declare(env, p.name.name, args[i], false)
     }
     stmts, stmts_ok := fn.body.un.([]^Stmt)
     loopin_stmts: for stmt in stmts {
@@ -463,7 +466,7 @@ eval_binary_op :: proc(
         case .Xor:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
-            return i64(b1 ~~ b2)
+            return i64(b1 ~ b2)
         case .Implies:
             b1 := value_to_bool(lhs)
             b2 := value_to_bool(rhs)
