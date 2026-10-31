@@ -20,7 +20,7 @@ func 'cli' build(args) {
         print('-> mode: release\n')
     }
     let exe_name = 'bake.exe'
-    let odin_args = []
+    var odin_args = []
     if options.debug {
         odin_args = odin_args + [ '-debug' ]
     }
