@@ -974,13 +974,13 @@ parse_stmt :: proc(p: ^Parser) -> ^Stmt {
                     expr := parse_expr(p)
                     expect_1_skip_newlines(p)
                     return stmt_make(merge_locs(l, expr.loc), Stmt_Decl {
-                        mutable = false,
+                        mutable = true,
                         name = ident,
                         value = expr,
                     })
                 } else {
                     return stmt_make(l, Stmt_Decl {
-                        mutable = false,
+                        mutable = true,
                         name = ident,
                         value = expr_make(merge_locs(l, ident_loc), Lit_Nil {}),
                     })

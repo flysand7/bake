@@ -430,7 +430,7 @@ call_func :: proc(ctx: ^Ctx, fn: Bake_Func, args: []Value) -> (Value, Call_Func_
     env := env_make(fn.env)
     append(&ctx.ret_stack, nil)
     for p, i in fn.params {
-        env_set(env, p.name.name, args[i])
+        _ = env_declare(env, p.name.name, args[i], false)
     }
     stmts, stmts_ok := fn.body.un.([]^Stmt)
     loopin_stmts: for stmt in stmts {
