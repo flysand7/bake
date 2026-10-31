@@ -189,22 +189,6 @@ Any expression that evaluates to a function can be called, including members
 such as `counter.inc()`. Arguments are evaluated left to right. Strings cannot
 be indexed.
 
-### Assignment
-
-Assignment is a statement, not a general expression; it cannot be nested inside
-another expression.
-
-```
-x = 1
-dict.key = 2
-array[0] = 3
-```
-
-- `x = value` updates the nearest visible binding of `x`. If no binding exists,
-  a new variable is created in the current scope.
-- `dict.key = value` and `array[index] = value` mutate the container in place.
-- There are no compound assignment operators such as `+=`.
-
 ## Statements
 
 | Form | Meaning |
@@ -254,7 +238,24 @@ Statements normally occupy separate lines. There are no semicolons.
 
 The top level is the global scope. Every block creates a child scope, including
 function bodies and each iteration of a loop body. Assignment searches outward
-through enclosing scopes; declarations always belong to the current one.
+through enclosing scopes; declarations always create a binding in the current
+one.
+
+### Assignment
+
+Assignment is a statement, not a general expression; it cannot be nested inside
+another expression.
+
+```
+x = 1
+dict.key = 2
+array[0] = 3
+```
+
+- `x = value` updates the nearest visible binding of `x`. If no binding exists,
+  an error will be returned.
+- `dict.key = value` and `array[index] = value` mutate the container in place.
+- There are no compound assignment operators such as `+=`.
 
 ## Functions
 
