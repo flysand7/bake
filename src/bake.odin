@@ -45,105 +45,6 @@ bake_config := Bake_Config {
     bake_cache_path = ".bake-cache",
 }
 
-printfln_verbose :: proc(fmt_string: string, args: ..any) {
-    sb := strings.builder_make(context.allocator)
-    if bake_config.verbose {
-        fmt.sbprintf(&sb, cli.COLOR_VERBOSE + "[VERBOSE] ")
-        fmt.sbprintf(&sb, fmt_string, ..args)
-        fmt.sbprintf(&sb, cli.COLOR_RESET + "\n")
-    }
-    if cli.config.stdout_color {
-        fmt.printf(strings.to_string(sb))
-    } else {
-        fmt.printf(cli.strip_color(strings.to_string(sb)))
-    }
-}
-
-cli_recolor_string :: proc(s: string) -> string {
-    sb := strings.builder_make(context.allocator)
-    spc := true
-    arg := false
-    m := false
-    for i in 0 ..< len(s) {
-        if s[i] != '-' {
-            spc = false
-        }
-        if s[i] == ' ' || s[i] == '\n' {
-            spc = true
-        }
-        if arg && !(('a' <= s[i] && s[i] <= 'z') || ('A' <= s[i] && s[i] <= 'Z') || s[i] == '-') {
-            arg = false
-            strings.write_string(&sb, cli.COLOR_RESET)
-        }
-        switch s[i] {
-        case '-':
-            if !arg && spc {
-                arg = true
-                strings.write_string(&sb, cli.COLOR_ARG)
-                strings.write_byte(&sb, '-')
-            } else {
-                strings.write_byte(&sb, '-')
-            }
-        case '`':
-            if !m {
-                strings.write_byte(&sb, '`')
-                strings.write_string(&sb, cli.COLOR_CODE)
-            } else {
-                strings.write_string(&sb, cli.COLOR_RESET)
-                strings.write_byte(&sb, '`')
-            }
-            m = !m
-        case '\'':
-            if !m {
-                strings.write_byte(&sb, '\'')
-                strings.write_string(&sb, cli.COLOR_USER)
-            } else {
-                strings.write_string(&sb, cli.COLOR_RESET)
-                strings.write_byte(&sb, '\'')
-            }
-            m = !m
-        case '[':
-            strings.write_byte(&sb, '[')
-            strings.write_string(&sb, cli.COLOR_ARG)
-        case ']':
-            strings.write_string(&sb, cli.COLOR_RESET)
-            strings.write_byte(&sb, ']')
-        case '<':
-            strings.write_byte(&sb, '<')
-            strings.write_string(&sb, cli.COLOR_PAR)
-        case '>':
-            strings.write_string(&sb, cli.COLOR_RESET)
-            strings.write_byte(&sb, '>')
-        case:
-            strings.write_byte(&sb, s[i])
-        }
-    }
-    return strings.to_string(sb)
-}
-
-printfln_error :: proc(fmt_string: string, args: ..any) {
-    sb := strings.builder_make(context.allocator)
-    if cli.config.stderr_color {
-        fmt.sbprintf(&sb, cli.COLOR_ERROR + "[ERROR] ")
-        fmt.sbprintf(&sb, fmt_string, ..args)
-        fmt.sbprintf(&sb, cli.COLOR_RESET + "\n")
-    } else {
-        fmt.sbprintf(&sb, fmt_string, ..args)
-    }
-    fmt.eprint(strings.to_string(sb))
-}
-
-printfln_color :: proc(fmt_string: string, args: ..any) {
-    sb := strings.builder_make(context.allocator)
-    fmt.sbprintf(&sb, fmt_string, ..args)
-    fmt.sbprintf(&sb, "\n")
-    if cli.config.stdout_color {
-        fmt.print(cli_recolor_string(strings.to_string(sb)))
-    } else {
-        fmt.print(strings.to_string(sb))
-    }
-}
-
 main :: proc() {
     cl_schema := cli.Schema {
         opts = []cli.Opt_Schema {
@@ -162,17 +63,17 @@ main :: proc() {
         case .Arg_Missing:
         case .Arg_Unexpected:
         case .Opt_No_Name:
-            printfln_error("Invalid option syntax: '%s'.", err.arg)
+            log.errorf("Invalid option syntax: '%s'.", err.arg)
         case .Opt_No_Value:
-            printfln_error("Option '%s' requires a value.", err.opt_name)
+            log.errorf("Option '%s' requires a value.", err.opt_name)
         case .Opt_Unknown:
-            printfln_error("Unknown option '%s'.", err.opt_name)
+            log.errorf("Unknown option '%s'.", err.opt_name)
         case .Opt_Already_Specified:
-            printfln_error("Option '%s' is specified multiple times.", err.opt_name)
+            log.errorf("Option '%s' is specified multiple times.", err.opt_name)
         case .Opt_Invalid_Value:
-            printfln_error("Option '%s' has invalid value.", err.opt_name)
+            log.errorf("Option '%s' has invalid value.", err.opt_name)
         }
-        printfln_color("* Run `bake -help` to get more details about the command line syntax.")
+        log.infof("* Run `bake -help` to get more details about the command line syntax.")
         os.exit(2)
     }
     logger_level := log.Level.Info
@@ -184,7 +85,7 @@ main :: proc() {
     }
     if cl.opts["-help"].(bool) {
         if cli.config.stdout_color {
-            fmt.println(cli_recolor_string(HELP_MESSAGE))
+            fmt.println(cli.auto_color(HELP_MESSAGE))
         } else {
             fmt.println(HELP_MESSAGE)
         }
@@ -200,58 +101,58 @@ main :: proc() {
     if "-cache" in cl.opts {
         bake_config.bake_cache_path = cl.opts["-cache"].(string)
     }
-    context.logger = log.create_console_logger(logger_level, logger_options)
+    context.logger = bake_logger(logger_level, logger_options)
     log.debugf("Logger initialized.")
     if len(cl.args) == 0 {
         bake_config.bakefile_target = "build"
     } else if len(cl.args) == 1 {
         bake_config.bakefile_target = cl.args[0]
     } else {
-        printfln_error("Unexpected '%s', after [target] was already specified.", cl.args[1])
-        printfln_color("* Note: '%s' was specified as [target] earlier", cl.args[0])
-        printfln_color("* Note: Only one target is allowed to be executed at once")
-        printfln_color("* Run `bake -help` to get more details about the command line syntax.")
+        log.errorf("Unexpected '%s', after [target] was already specified.", cl.args[1])
+        log.infof("* Note: '%s' was specified as [target] earlier", cl.args[0])
+        log.infof("* Note: Only one target is allowed to be executed at once")
+        log.infof("* Run `bake -help` to get more details about the command line syntax.")
         os.exit(2)
     }
-    printfln_verbose("Bakefile Target: '%s'", bake_config.bakefile_target)
+    log.debugf("Bakefile Target: '%s'", bake_config.bakefile_target)
     if len(bake_config.bakefile_path) == 0 {
         bake_config.bakefile_path = find_bakefile()
         if len(bake_config.bakefile_path) == 0 {
-            printfln_error("Bakefile not found at path: '%s'.", bake_config.bakefile_path)
+            log.errorf("Bakefile not found at path: '%s'.", bake_config.bakefile_path)
             os.exit(1)
         }
     }
-    printfln_verbose("Bakefile Path: '%s'", bake_config.bakefile_path)
-    printfln_verbose("Bake Cache: '%s'", bake_config.bake_cache_path)
+    log.debugf("Bakefile Path: '%s'", bake_config.bakefile_path)
+    log.debugf("Bake Cache: '%s'", bake_config.bake_cache_path)
     bakefile_bytes, bakefile_bytes_err := os.read_entire_file(bake_config.bakefile_path, context.temp_allocator)
     if bakefile_bytes_err != nil {
-        printfln_error("Failed to open bakefile: '%s'\n", bake_config.bakefile_path)
+        log.errorf("Failed to open bakefile: '%s'\n", bake_config.bakefile_path)
         os.exit(1)
     }
     init_builtins()
     parser := parser_make(bake_config.bakefile_path, transmute(string) bakefile_bytes)
     stmts := parse_stmts(&parser)
-    printfln_verbose("Running the bake script...")
+    log.debugf("Running the bake script...")
     ctx := exec_stmts(bake_config.bakefile_path, transmute(string) bakefile_bytes, stmts)
     mb_value := env_get(ctx.global_env, bake_config.bakefile_target)
-    printfln_verbose("Finding the target function '%s'...", bake_config.bakefile_target)
+    log.debugf("Finding the target function '%s'...", bake_config.bakefile_target)
     if value, ok := mb_value.?; !ok {
-        printfln_error("Target function '%s' not declared in the script.", bake_config.bakefile_target)
-        printfln_color("* Please declare function as `func 'cli' %s () {{}}`", bake_config.bakefile_target)
+        log.errorf("Target function '%s' not declared in the script.", bake_config.bakefile_target)
+        log.infof("* Please declare function as `func 'cli' %s () {{}}`", bake_config.bakefile_target)
         os.exit(1)
     } else if func, ok := value.(Bake_Func); !ok {
-        printfln_error("Target '%s' is not a function.", bake_config.bakefile_target)
-        printfln_color("* Please declare function as `func 'cli' %s () {{}}`", bake_config.bakefile_target)
+        log.errorf("Target '%s' is not a function.", bake_config.bakefile_target)
+        log.infof("* Please declare function as `func 'cli' %s () {{}}`", bake_config.bakefile_target)
         os.exit(1)
     } else {
-        printfln_verbose("Executing the target function '%s'...", bake_config.bakefile_target)
+        log.debugf("Executing the target function '%s'...", bake_config.bakefile_target)
         cli_args := make([dynamic]Value)
         for arg in cl.targs[:] {
             append(&cli_args, arg)
         }
         ret, err := call_func(&ctx, value.(Bake_Func), []Value{cli_args[:]})
         if tok, ok := err.(Call_Func_Err_CF_Token); ok && tok.tok != nil {
-            printfln_error(
+            log.errorf(
                 "Control flow token '%s' used in the global scope.",
                 tok.tok == .Break?    "break"    :
                 tok.tok == .Continue? "continue" :
@@ -260,8 +161,8 @@ main :: proc() {
             )
             os.exit(1)
         } else if _, ok := err.(Call_Func_Err_Param_Mismatch); ok {
-            printfln_error("Target function '%s' has incorrect signature.", bake_config.bakefile_target)
-            printfln_color("* Note: The correct signature is `func 'cli' %s(args) {}`", bake_config.bakefile_target)
+            log.errorf("Target function '%s' has incorrect signature.", bake_config.bakefile_target)
+            log.infof("* Note: The correct signature is `func 'cli' %s(args) {}`", bake_config.bakefile_target)
             os.exit(1)
         }
     }

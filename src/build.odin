@@ -3,7 +3,7 @@ package bake
 import "cache"
 
 import "core:os"
-import "core:fmt"
+import "core:log"
 
 Builtin_Cmd :: struct {
     execute: #type proc([]string) -> int,
@@ -101,7 +101,7 @@ dep_node_for_recipe :: proc(recipes: []Recipe, recipe: Recipe) -> ^Recipe_Node {
 }
 
 dependency_dag_build :: proc(recipes: []Recipe, targets: []string) -> Recipe_DAG {
-    printfln_verbose("Building task dependency graph...")
+    log.debugf("Building task dependency graph...")
     dt := Recipe_DAG {
         roots = make([dynamic]^Recipe_Node),
     }
@@ -116,7 +116,7 @@ dependency_dag_build :: proc(recipes: []Recipe, targets: []string) -> Recipe_DAG
 }
 
 dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []^Recipe_Node {
-    printfln_verbose("Sorting dependency graph...")
+    log.debugf("Sorting dependency graph...")
     dep_tree_walk :: proc(arr: ^[dynamic]^Recipe_Node, dn: ^Recipe_Node) {
         for node in dn.dependencies {
             dep_tree_walk(arr, node)
@@ -133,12 +133,12 @@ dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []^Recipe_Node {
 build_execution_plan :: proc(c: ^cache.Cache, recipes: []Recipe, targets: []string) -> []Exec_Task {
     dag := dependency_dag_build(recipes, targets)
     sorted_nodes := dependency_dag_toposort(dag)
-    printfln_verbose("Building execution plan...")
+    log.debugf("Building execution plan...")
     plan := make([dynamic]Exec_Task)
     for node, i in sorted_nodes {
-        printfln_verbose("Considering graph node: %v", node.recipe.cmds)
+        log.debugf("Considering graph node: %v", node.recipe.cmds)
         inputs_changed := false
-        printfln_verbose("-> Checking recipe inputs...")
+        log.debugf("-> Checking recipe inputs...")
         for dependency in node.recipe.inputs {
             status := cache.cache_check(c, dependency)
             if status != .Unchanged {
@@ -146,42 +146,42 @@ build_execution_plan :: proc(c: ^cache.Cache, recipes: []Recipe, targets: []stri
             }
         }
         if inputs_changed {
-            printfln_verbose("* Input(s) changed.")
+            log.debugf("* Input(s) changed.")
         } else {
-            printfln_verbose("* Input(s) are unchanged.")
+            log.debugf("* Input(s) are unchanged.")
         }
         outputs_changed := false
         if inputs_changed {
-            printfln_verbose("-> Invalidating outputs.")
+            log.debugf("-> Invalidating outputs.")
             for output in node.recipe.outputs {
                 cache.cache_invalidate(c, output)
             }
         } else {
-            printfln_verbose("-> Checking recipe outputs...")
+            log.debugf("-> Checking recipe outputs...")
             for output in node.recipe.outputs {
                 status := cache.cache_check(c, output)
                 if status == .Updated {
-                    fmt.printfln("[WARNING]: Output %s unexpectedly changed since last rebuild. Rebuilding.", output)
+                    log.warnf("Output %s unexpectedly changed since last rebuild. Rebuilding.", output)
                 }
                 if status != .Unchanged {
                     outputs_changed = true
                 }
             }
             if outputs_changed {
-                printfln_verbose("* Output(s) changed.")
+                log.debugf("* Output(s) changed.")
             } else {
-                printfln_verbose("* Output(s) are unchanged.")
+                log.debugf("* Output(s) are unchanged.")
             }
         }
         if inputs_changed || outputs_changed {
-            printfln_verbose("* This recipe will be executed.")
+            log.debugf("* This recipe will be executed.")
             append(&plan, Exec_Task {
                 cmds = node.recipe.cmds,
                 inputs = node.recipe.inputs,
                 outputs = node.recipe.outputs,
             })
         } else {
-            printfln_verbose("* Cached!")
+            log.debugf("* Cached!")
         }
     }
     return plan[:]
@@ -193,14 +193,14 @@ execute_plan :: proc(c: ^cache.Cache, plan: []Exec_Task) {
         for cmd in task.cmds {
             code, err := run_cmd(cmd)
             if err != nil {
-                fmt.eprintf("Failed to run command: %v\n", cmd)
+                log.errorf("Failed to run command: %v\n", cmd)
                 if err == .Executable_Not_Found {
-                    fmt.eprintf("  Specified executable not found.\n")
+                    log.errorf("  Specified executable not found.\n")
                 }
                 os.exit(1)
             }
             if code != 0 {
-                fmt.printf("Command %v failed with error code: %d\n", cmd, code)
+                log.errorf("Command %v failed with error code: %d\n", cmd, code)
                 had_errors := true
                 break
             }
