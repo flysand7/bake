@@ -1,5 +1,7 @@
 package bake
 
+import "cache"
+
 import "core:os"
 import "core:fmt"
 
@@ -128,7 +130,7 @@ dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []^Recipe_Node {
     return nodes[:]
 }
 
-build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string) -> []Exec_Task {
+build_execution_plan :: proc(c: ^cache.Cache, recipes: []Recipe, targets: []string) -> []Exec_Task {
     dag := dependency_dag_build(recipes, targets)
     sorted_nodes := dependency_dag_toposort(dag)
     printfln_verbose("Building execution plan...")
@@ -138,7 +140,7 @@ build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string
         inputs_changed := false
         printfln_verbose("-> Checking recipe inputs...")
         for dependency in node.recipe.inputs {
-            status := cache_check(cache, dependency)
+            status := cache.cache_check(c, dependency)
             if status != .Unchanged {
                 inputs_changed = true
             }
@@ -152,12 +154,12 @@ build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string
         if inputs_changed {
             printfln_verbose("-> Invalidating outputs.")
             for output in node.recipe.outputs {
-                cache_invalidate(cache, output)
+                cache.cache_invalidate(c, output)
             }
         } else {
             printfln_verbose("-> Checking recipe outputs...")
             for output in node.recipe.outputs {
-                status := cache_check(cache, output)
+                status := cache.cache_check(c, output)
                 if status == .Updated {
                     fmt.printfln("[WARNING]: Output %s unexpectedly changed since last rebuild. Rebuilding.", output)
                 }
@@ -185,7 +187,7 @@ build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string
     return plan[:]
 }
 
-execute_plan :: proc(cache: ^Cache, plan: []Exec_Task) {
+execute_plan :: proc(c: ^cache.Cache, plan: []Exec_Task) {
     had_errors := false
     for task, idx in plan {
         for cmd in task.cmds {
@@ -204,17 +206,17 @@ execute_plan :: proc(cache: ^Cache, plan: []Exec_Task) {
             }
         }
         for output in task.outputs {
-            cache_update(cache, output)
+            cache.cache_update(c, output)
         }
         for input in task.inputs {
-            cache_update(cache, input)
+            cache.cache_update(c, input)
         }
     }
-    fs_cache_write(cache)
+    cache.fs_cache_write(c)
 }
 
 build :: proc(recipes: []Recipe, targets: []string) {
-    cache := fs_cache_open()
+    cache := cache.fs_cache_open(bake_config.bake_cache_path)
     plan := build_execution_plan(&cache, recipes, targets)
     execute_plan(&cache, plan)
 }

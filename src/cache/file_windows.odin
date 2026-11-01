@@ -1,5 +1,5 @@
 //+build windows
-package bake
+package bake_cache
 
 import "core:sys/windows"
 import "core:os"

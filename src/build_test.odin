@@ -1,6 +1,7 @@
 package bake
 
 import "core:testing"
+import "cache"
 
 // An empty set of recipes should produce an empty execution plan.
 @(test)
@@ -29,8 +30,8 @@ test_discard_unused_recipes_1 :: proc(t: ^testing.T) {
 // executed.
 @(test)
 test_one_output_pass :: proc(t: ^testing.T) {
-    cache := test_cache_make([]Test_Cache_Rec {
-        Test_Cache_Rec {
+    c := cache.test_cache_make([]cache.Test_Cache_Rec {
+        cache.Test_Cache_Rec {
             filename = "src/main.odin",
             status = .Updated,
         }
@@ -42,7 +43,7 @@ test_one_output_pass :: proc(t: ^testing.T) {
             outputs = []string { "test.exe" },
         },
     }
-    plan := build_execution_plan(&cache, recipes, {"test.exe"})
+    plan := build_execution_plan(&c, recipes, {"test.exe"})
     testing.expect_value(t, len(plan), 1)
 }
 
@@ -50,12 +51,12 @@ test_one_output_pass :: proc(t: ^testing.T) {
 // discarded.
 @(test)
 test_one_output_discard :: proc(t: ^testing.T) {
-    cache := test_cache_make([]Test_Cache_Rec {
-        Test_Cache_Rec {
+    c := cache.test_cache_make([]cache.Test_Cache_Rec {
+        cache.Test_Cache_Rec {
             filename = "src/main.odin",
             status = .Unchanged,
         },
-        Test_Cache_Rec {
+        cache.Test_Cache_Rec {
             filename = "test.exe",
             status = .Unchanged,
         },
@@ -67,7 +68,7 @@ test_one_output_discard :: proc(t: ^testing.T) {
             outputs = []string { "test.exe" },
         },
     }
-    plan := build_execution_plan(&cache, recipes, {"test.exe"})
+    plan := build_execution_plan(&c, recipes, {"test.exe"})
     testing.expect_value(t, len(plan), 0)
 }
 
@@ -75,12 +76,12 @@ test_one_output_discard :: proc(t: ^testing.T) {
 // that recipe should be executed.
 @(test)
 test_changed_input_pass :: proc(t: ^testing.T) {
-    cache := test_cache_make([]Test_Cache_Rec {
-        Test_Cache_Rec {
+    c := cache.test_cache_make([]cache.Test_Cache_Rec {
+        cache.Test_Cache_Rec {
             filename = "src/main.odin",
             status = .Updated,
         },
-        Test_Cache_Rec {
+        cache.Test_Cache_Rec {
             filename = "test.exe",
             status = .Unchanged,
         },
@@ -92,7 +93,7 @@ test_changed_input_pass :: proc(t: ^testing.T) {
             outputs = []string { "test.exe" },
         },
     }
-    plan := build_execution_plan(&cache, recipes, {"test.exe"})
+    plan := build_execution_plan(&c, recipes, {"test.exe"})
     testing.expect_value(t, len(plan), 1)
 }
 
@@ -100,12 +101,12 @@ test_changed_input_pass :: proc(t: ^testing.T) {
 // regardless of whether the input is changed or not.
 @(test)
 test_changed_output_pass :: proc(t: ^testing.T) {
-    cache := test_cache_make([]Test_Cache_Rec {
-        Test_Cache_Rec {
+    c := cache.test_cache_make([]cache.Test_Cache_Rec {
+        cache.Test_Cache_Rec {
             filename = "src/main.odin",
             status = .Unchanged,
         },
-        Test_Cache_Rec {
+        cache.Test_Cache_Rec {
             filename = "test.exe",
             status = .Updated,
         },
@@ -117,7 +118,7 @@ test_changed_output_pass :: proc(t: ^testing.T) {
             outputs = []string { "test.exe" },
         },
     }
-    plan := build_execution_plan(&cache, recipes, {"test.exe"})
+    plan := build_execution_plan(&c, recipes, {"test.exe"})
     testing.expect_value(t, len(plan), 1)
 }
 
@@ -125,10 +126,10 @@ test_changed_output_pass :: proc(t: ^testing.T) {
 // intermediate output and the step that is using that output should be re-run.
 @(test)
 test_intermediate_output_change_pass :: proc(t: ^testing.T) {
-    cache := test_cache_make([]Test_Cache_Rec {
-        Test_Cache_Rec { "src/main.odin", .Unchanged },
-        Test_Cache_Rec { "test.o", .Updated },
-        Test_Cache_Rec { "test.a", .Unchanged },
+    c := cache.test_cache_make([]cache.Test_Cache_Rec {
+        cache.Test_Cache_Rec { "src/main.odin", .Unchanged },
+        cache.Test_Cache_Rec { "test.o", .Updated },
+        cache.Test_Cache_Rec { "test.a", .Unchanged },
     })
     // Note(flysand): These are intentionally out of order to also test the
     // sorting that build_execution_plan should perform.
@@ -144,7 +145,7 @@ test_intermediate_output_change_pass :: proc(t: ^testing.T) {
             outputs = []string { "test.o" },
         },
     }
-    plan := build_execution_plan(&cache, recipes, { "test.a" })
+    plan := build_execution_plan(&c, recipes, { "test.a" })
     testing.expect_value(t, len(plan), 2)
     testing.expect_value(t, plan[0].cmds[0].(string), "odin build src -o:test.o -build-mode:obj")
     testing.expect_value(t, plan[1].cmds[0].(string), "llvm-ar xrv test.a test.o")
@@ -154,10 +155,10 @@ test_intermediate_output_change_pass :: proc(t: ^testing.T) {
 // recompiled.
 @(test)
 test_downstream_inputs_invalidation :: proc(t: ^testing.T) {
-    cache := test_cache_make([]Test_Cache_Rec {
-        Test_Cache_Rec { "a.txt", .Updated },
-        Test_Cache_Rec { "b.txt", .Unchanged },
-        Test_Cache_Rec { "c.txt", .Unchanged },
+    c := cache.test_cache_make([]cache.Test_Cache_Rec {
+        cache.Test_Cache_Rec { "a.txt", .Updated },
+        cache.Test_Cache_Rec { "b.txt", .Unchanged },
+        cache.Test_Cache_Rec { "c.txt", .Unchanged },
     })
     // Note(flysand): These are intentionally out of order to also test the
     // sorting that build_execution_plan should perform.
@@ -173,7 +174,7 @@ test_downstream_inputs_invalidation :: proc(t: ^testing.T) {
             outputs = []string { "c.txt" },
         },
     }
-    plan := build_execution_plan(&cache, recipes, { "c.txt" })
+    plan := build_execution_plan(&c, recipes, { "c.txt" })
     testing.expect_value(t, len(plan), 2)
     testing.expect_value(t, plan[0].cmds[0].(string), "a > b")
     testing.expect_value(t, plan[1].cmds[0].(string), "b > c")

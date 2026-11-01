@@ -1,5 +1,7 @@
 package bake
 
+import "core:log"
+import "core:io"
 import "core:strings"
 import "core:fmt"
 import "core:os"
@@ -173,9 +175,12 @@ main :: proc() {
         printfln_color("* Run `bake -help` to get more details about the command line syntax.")
         os.exit(2)
     }
+    logger_level := log.Level.Info
+    logger_options := log.Options { .Level }
     if cl.opts["-colors"].(bool) {
         cli.config.stderr_color = true
         cli.config.stdout_color = true
+        logger_options += { .Terminal_Color }
     }
     if cl.opts["-help"].(bool) {
         if cli.config.stdout_color {
@@ -187,6 +192,7 @@ main :: proc() {
     }
     if cl.opts["-verbose"].(bool) {
         bake_config.verbose = true
+        logger_level = .Debug
     }
     if "-bakefile" in cl.opts {
         bake_config.bakefile_path = cl.opts["-bakefile"].(string)
@@ -194,6 +200,8 @@ main :: proc() {
     if "-cache" in cl.opts {
         bake_config.bake_cache_path = cl.opts["-cache"].(string)
     }
+    context.logger = log.create_console_logger(logger_level, logger_options)
+    log.debugf("Logger initialized.")
     if len(cl.args) == 0 {
         bake_config.bakefile_target = "build"
     } else if len(cl.args) == 1 {

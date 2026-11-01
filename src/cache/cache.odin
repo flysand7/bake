@@ -1,7 +1,8 @@
-package bake
+package bake_cache
 
 import "core:slice"
 import "core:os"
+import "core:log"
 
 /* Status of a file inside a cache */
 Cache_Status :: enum {
@@ -29,6 +30,11 @@ Cache :: struct {
     _impl_check: proc(ctx: rawptr, filename: string) -> Cache_Status,
 }
 
+@(private)
+cache_log :: proc(ic: ^Cache, format: string, args: ..any) {
+    log.debugf(format, ..args)
+}
+
 /*
 Cache a file or update its state inside the cache.
 
@@ -40,7 +46,7 @@ of calling this function, the cache record will be overwritten with the new
 information.
 */
 cache_update :: proc(ic: ^Cache, filename: string) {
-    printfln_verbose("* Cached file: '%s'", filename)
+    cache_log(ic, "* Cached file: '%s'", filename)
     ic._impl_update(ic.ctx, filename)
 }
 
@@ -52,7 +58,7 @@ subsequent cache checks to return this status and treat this file the same way
 as updated files.
 */
 cache_invalidate :: proc(ic: ^Cache, filename: string) {
-    printfln_verbose("* Invalidated file: '%s'", filename)
+    cache_log(ic, "* Invalidated file: '%s'", filename)
     ic._impl_invalidate(ic.ctx, filename)
 }
 
@@ -64,7 +70,7 @@ cache and whether it was updated or not.
 */
 cache_check :: proc(ic: ^Cache, filename: string) -> Cache_Status {
     status := ic._impl_check(ic.ctx, filename)
-    printfln_verbose("* File '%s' status: %v", filename, status)
+    cache_log(ic, "* File '%s' status: %v", filename, status)
     return status
 }
 
@@ -74,13 +80,15 @@ Fs_Cache_Rec :: struct {
 }
 
 Fs_Cache :: struct {
+    path: string,
     recs: [dynamic]Fs_Cache_Rec,
     invalidated_files: [dynamic]File_Id
 }
 
-fs_cache_open :: proc() -> Cache {
-    bytes, err := os.read_entire_file(bake_config.bake_cache_path, context.allocator)
+fs_cache_open :: proc(path: string) -> Cache {
+    bytes, err := os.read_entire_file(path, context.allocator)
     cache := new(Fs_Cache)
+    cache.path = path
     cache.recs = make([dynamic]Fs_Cache_Rec)
     cache.invalidated_files = make([dynamic]File_Id)
     if err != nil {
@@ -144,15 +152,15 @@ fs_cache_check :: proc(cache: rawptr, filename: string) -> Cache_Status {
     return .Unchanged
 }
 
-fs_cache_write :: proc(cache: ^Cache) {
-    cache := cast(^Fs_Cache) cache.ctx
+fs_cache_write :: proc(ic: ^Cache) {
+    cache := cast(^Fs_Cache) ic.ctx
     bytes := slice.reinterpret([]u8, cache.recs[:])
     perm := os.Permissions {
         .Read_Other, .Read_Group, .Read_User, .Write_User
     }
-    err := os.write_entire_file(bake_config.bake_cache_path, bytes, perm)
+    err := os.write_entire_file(cache.path, bytes, perm)
     assert(err == nil)
-    printfln_verbose("CACHE WRITTEN: '%s'", bake_config.bake_cache_path)
+    cache_log(ic, "CACHE WRITTEN: '%s'", cache.path)
 }
 
 _fs_cache_impl :: proc(fs_cache: ^Fs_Cache) -> Cache {
