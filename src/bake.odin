@@ -26,7 +26,7 @@ Available options:
                     default: './bakefile'
   -cache:<path>     Specify an alternative path to bake cache.
                     default: './.bake-cache'
-  -colors           When the output of bake is redirected, bake doesn't output
+  -colors           When the output of bake is redirected, bake does not output
                     any ansi colors. Use this option to force using ANSI colors,
                     even when the output is redirected.
 `
