@@ -3,6 +3,7 @@ package bake_cache
 import "core:slice"
 import "core:os"
 import "core:log"
+import "core:hash"
 
 /* Status of a file inside a cache */
 Cache_Status :: enum {
@@ -75,29 +76,59 @@ cache_check :: proc(ic: ^Cache, filename: string) -> Cache_Status {
 }
 
 Fs_Cache_Rec :: struct {
-    id: File_Id,
-    ts: u64,
+    path: string,
+    mtime: u64,
+    size: u64,
+    content_hash: u128,
 }
 
 Fs_Cache :: struct {
     path: string,
     recs: [dynamic]Fs_Cache_Rec,
-    invalidated_files: [dynamic]File_Id
+    invalidated_files: [dynamic]string
 }
 
 fs_cache_open :: proc(path: string) -> Cache {
-    bytes, err := os.read_entire_file(path, context.allocator)
-    cache := new(Fs_Cache)
-    cache.path = path
-    cache.recs = make([dynamic]Fs_Cache_Rec)
-    cache.invalidated_files = make([dynamic]File_Id)
-    if err != nil {
-        // If the cache file doesn't exist, this behaves like cache_make.
-        return _fs_cache_impl(cache)
+    bytes, file_err := os.read_entire_file(path, context.allocator)
+    // If the cache doesn't exist, a new one should be created.
+    if file_err == .Not_Exist {
+        fs_cache := new(Fs_Cache)
+        fs_cache.path = path
+        fs_cache.recs = make([dynamic]Fs_Cache_Rec, context.allocator)
+        fs_cache.invalidated_files = make([dynamic]string, context.allocator)
+        return _fs_cache_impl(fs_cache)
     }
-    prev_recs := slice.reinterpret([]Fs_Cache_Rec, bytes)
-    append(&cache.recs, ..prev_recs)
-    return _fs_cache_impl(cache)
+    if file_err != nil {
+        log.panicf("Error reading the cache file '%s' (%v)", path, file_err)
+    }
+    cache, cache_err := parse_format(path, bytes)
+    need_regenerate_cache := false
+    switch cache_err.code {
+    case .None:
+        /* nothing */
+    case .Invalid_File_Size:
+        log.panicf("Invalid cache file: Invalid file size: %d bytes (%d bytes expected)", len(bytes), cache_err.value)
+    case .Invalid_Offset:
+        log.panicf("Invalid cache file: Offset at (%08x) is out of bounds (%08x)", cache_err.offset, cache_err.value)
+    case .Missing_Magic:
+        log.warnf("Invalid cache file: No magic number at the start of the file")
+        need_regenerate_cache = true
+    case .Outdated_Version:
+        log.warnf("Invalid cache file: Format version is outdated (%d)", cache_err.value)
+        need_regenerate_cache = true
+    case .Unknown_Version:
+        log.warnf("Invalid cache file: Unknown format version (%d)", cache_err.value)
+        need_regenerate_cache = true
+    }
+    if need_regenerate_cache {
+        log.warnf("Cache file will be regenerated due to errors")
+        fs_cache := new(Fs_Cache)
+        fs_cache.path = path
+        fs_cache.recs = make([dynamic]Fs_Cache_Rec, context.allocator)
+        fs_cache.invalidated_files = make([dynamic]string, context.allocator)
+        return _fs_cache_impl(fs_cache)
+    }
+    return cache
 }
 
 fs_cache_make :: proc() -> Cache {
@@ -108,45 +139,68 @@ fs_cache_make :: proc() -> Cache {
 
 fs_cache_update :: proc(cache: rawptr, filename: string) {
     cache := cast(^Fs_Cache) cache
-    file_id, file_ts, ok := file_get_id(filename)
+    file_info, error := os.stat(filename, context.allocator)
+    if error != nil {
+        log.panicf("Cache: Unable to stat file: '%s' (%v)", filename, error)
+    }
+    file_rec: ^Fs_Cache_Rec = nil
     for &rec in cache.recs {
-        if rec.id == file_id {
-            rec.ts = file_ts
-            return
+        if rec.path == filename {
+            file_rec = &rec
+            break
         }
     }
-    append(&cache.recs, Fs_Cache_Rec { file_id, file_ts })
+    contents, read_error := os.read_entire_file(filename, context.allocator)
+    if read_error != nil {
+        log.panicf("Cache: Unable to open file: '%s' (%v)", filename, read_error)
+    }
+    content_hash := hash.murmur3_x64_128(contents)
+    if file_rec != nil {
+        file_rec.mtime = u64(file_info.modification_time._nsec)
+        file_rec.size = u64(file_info.size)
+        file_rec.content_hash = content_hash
+    } else {
+        append(&cache.recs, Fs_Cache_Rec {
+            mtime = u64(file_info.modification_time._nsec),
+            size = u64(file_info.size),
+            path = filename,
+            content_hash = content_hash
+        })
+    }
 }
 
 fs_cache_invalidate :: proc(cache: rawptr, filename: string) {
     cache := cast(^Fs_Cache) cache
-    file_id, _, ok := file_get_id(filename)
-    if ok {
-        append(&cache.invalidated_files, file_id)
-    }
+    append(&cache.invalidated_files, filename)
 }
 
 fs_cache_check :: proc(cache: rawptr, filename: string) -> Cache_Status {
     cache := cast(^Fs_Cache) cache
-    rec: Fs_Cache_Rec = ---
-    rec_found := false
-    file_id, file_ts, ok := file_get_id(filename)
-    if !ok {
-        return .Not_Exist
+    file_info, file_info_err := os.stat(filename, context.allocator)
+    if file_info_err != nil {
+        if file_info_err == .Not_Exist {
+            return .Not_Exist
+        }
+        log.panicf("Unable to stat file: '%s' (%v)", filename, file_info_err)
     }
-    for i in cache.invalidated_files {
-        if i == file_id {
+    for invalidated_path in cache.invalidated_files {
+        if filename == invalidated_path {
             return .Invalidated
         }
     }
-    for r in cache.recs {
-        if r.id == file_id {
-            rec = r
-            rec_found = true
+    rec: ^Fs_Cache_Rec = nil
+    for &r in cache.recs {
+        if r.path == filename {
+            rec = &r
             break
         }
     }
-    if file_ts > rec.ts {
+    if rec == nil {
+        return .Updated
+    }
+    file_mtime := u64(file_info.modification_time._nsec)
+    file_size := u64(file_info.size)
+    if file_mtime != rec.mtime || file_size != rec.size {
         return .Updated
     }
     return .Unchanged
@@ -154,12 +208,14 @@ fs_cache_check :: proc(cache: rawptr, filename: string) -> Cache_Status {
 
 fs_cache_write :: proc(ic: ^Cache) {
     cache := cast(^Fs_Cache) ic.ctx
-    bytes := slice.reinterpret([]u8, cache.recs[:])
+    bytes := write_format(cache, context.allocator)
     perm := os.Permissions {
         .Read_Other, .Read_Group, .Read_User, .Write_User
     }
     err := os.write_entire_file(cache.path, bytes, perm)
-    assert(err == nil)
+    if err != nil {
+        log.panicf("Error writing to cache '%s' (%v)", cache.path, err)
+    }
     cache_log(ic, "CACHE WRITTEN: '%s'", cache.path)
 }
 
