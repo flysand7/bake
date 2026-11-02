@@ -1,6 +1,7 @@
 package bake
 
 import "cache"
+import "fs"
 
 import "core:os"
 import "core:log"
@@ -25,8 +26,8 @@ the command is executed.
 */
 Recipe :: struct {
     cmds: []Cmd,
-    inputs: []string,
-    outputs: []string,
+    inputs: []fs.File_Id,
+    outputs: []fs.File_Id,
 }
 
 /*
@@ -48,8 +49,8 @@ The input files for the node are split into two categories:
 Recipe_Node :: struct {
     recipe: Recipe,
     dependencies: [dynamic]^Recipe_Node,
-    leaf_dependencies: [dynamic]string,
-    intr_dependencies: [dynamic]string,
+    leaf_dependencies: [dynamic]fs.File_Id,
+    intr_dependencies: [dynamic]fs.File_Id,
 }
 
 /*
@@ -70,11 +71,11 @@ to be executed at all. If the inputs are unchanged, the outputs will too
 */
 Exec_Task :: struct {
     cmds: []Cmd,
-    inputs: []string,
-    outputs: []string,
+    inputs: []fs.File_Id,
+    outputs: []fs.File_Id,
 }
 
-find_recipe_for_target :: proc(recipes: []Recipe, target: string) -> (Recipe, bool) {
+find_recipe_for_target :: proc(recipes: []Recipe, target: fs.File_Id) -> (Recipe, bool) {
     for r in recipes {
         for output in r.outputs {
             if target == output {
@@ -100,7 +101,7 @@ dep_node_for_recipe :: proc(recipes: []Recipe, recipe: Recipe) -> ^Recipe_Node {
     return dn
 }
 
-dependency_dag_build :: proc(recipes: []Recipe, targets: []string) -> Recipe_DAG {
+dependency_dag_build :: proc(recipes: []Recipe, targets: []fs.File_Id) -> Recipe_DAG {
     log.debugf("Building task dependency graph...")
     dt := Recipe_DAG {
         roots = make([dynamic]^Recipe_Node),
@@ -130,7 +131,12 @@ dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []^Recipe_Node {
     return nodes[:]
 }
 
-build_execution_plan :: proc(c: ^cache.Cache, recipes: []Recipe, targets: []string) -> []Exec_Task {
+build_execution_plan :: proc(
+    f: ^fs.Fs,
+    c: ^cache.Cache,
+    recipes: []Recipe,
+    targets: []fs.File_Id,
+) -> []Exec_Task {
     dag := dependency_dag_build(recipes, targets)
     sorted_nodes := dependency_dag_toposort(dag)
     log.debugf("Building execution plan...")
@@ -140,7 +146,8 @@ build_execution_plan :: proc(c: ^cache.Cache, recipes: []Recipe, targets: []stri
         inputs_changed := false
         log.debugf("-> Checking recipe inputs...")
         for dependency in node.recipe.inputs {
-            status := cache.cache_check(c, dependency)
+            dependency_info := fs.get_info_by_id(f, dependency)
+            status := cache.cache_check(c, dependency_info.path)
             if status != .Unchanged {
                 inputs_changed = true
             }
@@ -154,14 +161,16 @@ build_execution_plan :: proc(c: ^cache.Cache, recipes: []Recipe, targets: []stri
         if inputs_changed {
             log.debugf("-> Invalidating outputs.")
             for output in node.recipe.outputs {
-                cache.cache_invalidate(c, output)
+                output_info := fs.get_info_by_id(f, output)
+                cache.cache_invalidate(c, output_info.path)
             }
         } else {
             log.debugf("-> Checking recipe outputs...")
             for output in node.recipe.outputs {
-                status := cache.cache_check(c, output)
+                output_info := fs.get_info_by_id(f, output)
+                status := cache.cache_check(c, output_info.path)
                 if status == .Updated {
-                    log.warnf("Output %s unexpectedly changed since last rebuild. Rebuilding.", output)
+                    log.warnf("Output %s unexpectedly changed since last rebuild. Rebuilding.", output_info.path)
                 }
                 if status != .Unchanged {
                     outputs_changed = true
@@ -187,7 +196,7 @@ build_execution_plan :: proc(c: ^cache.Cache, recipes: []Recipe, targets: []stri
     return plan[:]
 }
 
-execute_plan :: proc(c: ^cache.Cache, plan: []Exec_Task) {
+execute_plan :: proc(f: ^fs.Fs, c: ^cache.Cache, plan: []Exec_Task) {
     had_errors := false
     for task, idx in plan {
         for cmd in task.cmds {
@@ -206,18 +215,20 @@ execute_plan :: proc(c: ^cache.Cache, plan: []Exec_Task) {
             }
         }
         for output in task.outputs {
-            cache.cache_update(c, output)
+            output_info := fs.get_info_by_id(f, output)
+            cache.cache_update(c, output_info.path)
         }
         for input in task.inputs {
-            cache.cache_update(c, input)
+            input_info := fs.get_info_by_id(f, input)
+            cache.cache_update(c, input_info.path)
         }
     }
     cache.fs_cache_write(c)
 }
 
-build :: proc(recipes: []Recipe, targets: []string) {
+build :: proc(f: ^fs.Fs, recipes: []Recipe, targets: []fs.File_Id) {
     cache := cache.fs_cache_open(bake_config.bake_cache_path)
-    plan := build_execution_plan(&cache, recipes, targets)
-    execute_plan(&cache, plan)
+    plan := build_execution_plan(f, &cache, recipes, targets)
+    execute_plan(f, &cache, plan)
 }
 

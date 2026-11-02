@@ -1,6 +1,5 @@
 package bake_cache
 
-import "core:slice"
 import "core:os"
 import "core:log"
 import "core:hash"

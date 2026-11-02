@@ -1,5 +1,7 @@
 package bake
 
+import "fs"
+
 import "core:fmt"
 import "core:strings"
 
@@ -24,6 +26,7 @@ Value :: union {
 }
 
 Ctx :: struct {
+    fs: ^fs.Fs,
     file_path: string,
     file_text: string,
     tasks: [dynamic]Recipe,
@@ -219,6 +222,7 @@ value_to_bool :: proc(value: Value) -> bool {
 ctx_make :: proc(file_path: string, file_text: string) -> Ctx {
     global_env := env_make(nil)
     return {
+        fs = new_clone(fs.make_fs(context.allocator)),
         file_text = file_text,
         file_path = file_path,
         global_env = global_env,
