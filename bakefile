@@ -34,6 +34,7 @@ func 'cli' build(args) {
             'src/cli/color.odin',
             'src/cache/cache.odin',
             'src/cache/cache_parser.odin',
+            'src/fs/fs.odin',
             'src/bake.odin',
             'src/bakefile.odin',
             'src/build.odin',
@@ -47,6 +48,37 @@ func 'cli' build(args) {
         [ exe_name ],
     )
     bake-build([ exe_name ])
+}
+
+func 'cli' test(args) {
+    let odin_test_flags = [ '-keep-executable', '-debug' ]
+    bake-recipe(
+        [['odin', 'test', 'src/fs', '-out:bake-test-fs.exe' ] + odin_test_flags],
+        [ 'src/fs/fs.odin' ],
+        [ 'bake-test-fs.exe' ],
+    )
+    bake-recipe(
+        [['odin', 'test', 'src', '-out:bake-test.exe'] + odin_test_flags],
+        [
+            'src/cli/atty.odin',
+            'src/cli/cli.odin',
+            'src/cli/color.odin',
+            'src/cache/cache.odin',
+            'src/cache/cache_parser.odin',
+            'src/fs/fs.odin',
+            'src/bake.odin',
+            'src/bakefile.odin',
+            'src/build.odin',
+            'src/exec.odin',
+            'src/parser.odin',
+            'src/script_builtin.odin',
+            'src/script_error.odin',
+            'src/script_env.odin',
+            'src/script.odin',
+        ],
+        [ 'bake-test.exe' ]
+    )
+    bake-build([ 'bake-test-fs.exe', 'bake-test.exe' ])
 }
 
 func 'cli' test_print_args(args) {
