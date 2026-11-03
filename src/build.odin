@@ -196,6 +196,27 @@ build_execution_plan :: proc(
     return plan[:]
 }
 
+build_execution_plan_no_cache :: proc(
+    f: ^fs.Fs,
+    recipes: []Recipe,
+    targets: []fs.File_Id,
+) -> []Exec_Task {
+    dag := dependency_dag_build(recipes, targets)
+    sorted_nodes := dependency_dag_toposort(dag)
+    log.debugf("Building execution plan...")
+    log.debugf("* Not using cache")
+    plan := make([dynamic]Exec_Task)
+    for node in sorted_nodes {
+        log.debugf("* Adding node: %v", node.recipe.cmds)
+        append(&plan, Exec_Task {
+            cmds = node.recipe.cmds,
+            inputs = node.recipe.inputs,
+            outputs = node.recipe.outputs,
+        })
+    }
+    return plan[:]
+}
+
 execute_plan :: proc(f: ^fs.Fs, c: ^cache.Cache, plan: []Exec_Task) {
     had_errors := false
     for task, idx in plan {
@@ -226,9 +247,33 @@ execute_plan :: proc(f: ^fs.Fs, c: ^cache.Cache, plan: []Exec_Task) {
     cache.fs_cache_write(c)
 }
 
+execute_plan_no_cache :: proc(f: ^fs.Fs, plan: []Exec_Task) {
+    for task, idx in plan {
+        for cmd in task.cmds {
+            code, err := run_cmd(cmd)
+            if err != nil {
+                log.errorf("Failed to run command: %v\n", cmd)
+                if err == .Executable_Not_Found {
+                    log.errorf("  Specified executable not found.\n")
+                }
+                os.exit(1)
+            }
+            if code != 0 {
+                log.errorf("Command %v failed with error code: %d\n", cmd, code)
+                break
+            }
+        }
+    }
+}
+
 build :: proc(f: ^fs.Fs, recipes: []Recipe, targets: []fs.File_Id) {
     cache := cache.fs_cache_open(bake_config.bake_cache_path)
-    plan := build_execution_plan(f, &cache, recipes, targets)
-    execute_plan(f, &cache, plan)
+    if !bake_config.no_cache {
+        plan := build_execution_plan(f, &cache, recipes, targets)
+        execute_plan(f, &cache, plan)
+    } else {
+        plan := build_execution_plan_no_cache(f, recipes, targets)
+        execute_plan_no_cache(f, plan)
+    }
 }
 

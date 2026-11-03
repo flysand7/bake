@@ -26,6 +26,9 @@ Available options:
                     default: './bakefile'
   -cache:<path>     Specify an alternative path to bake cache.
                     default: './.bake-cache'
+  -no-cache         Build without using the cache file. Every input and output
+                    will be considered as changed and the cache file won't be
+                    affected.
   -colors           When the output of bake is redirected, bake does not output
                     any ansi colors. Use this option to force using ANSI colors,
                     even when the output is redirected.
@@ -36,6 +39,7 @@ Bake_Config :: struct {
     bakefile_path: string,
     bakefile_target: string,
     bake_cache_path: string,
+    no_cache: bool,
 }
 
 bake_config := Bake_Config {
@@ -43,6 +47,7 @@ bake_config := Bake_Config {
     bakefile_path = "",
     bakefile_target = "",
     bake_cache_path = ".bake-cache",
+    no_cache = false,
 }
 
 main :: proc() {
@@ -53,6 +58,7 @@ main :: proc() {
             cli.opt_schema(.Boolean, "-colors"),
             cli.opt_schema(.String,  "-bakefile"),
             cli.opt_schema(.String,  "-cache"),
+            cli.opt_schema(.Boolean, "-no-cache"),
         }
     }
     cli.init()
@@ -98,6 +104,14 @@ main :: proc() {
     if "-bakefile" in cl.opts {
         bake_config.bakefile_path = cl.opts["-bakefile"].(string)
     }
+    if "-cache" in cl.opts && "-no-cache" in cl.opts {
+        log.errorf("Options '-cache' and '-no-cache' are incompatible")
+        log.infof("* Run `bake -help` to get more details about the command line syntax.")
+        os.exit(2)
+    }
+    if "-no-cache" in cl.opts {
+        bake_config.no_cache = true
+    }
     if "-cache" in cl.opts {
         bake_config.bake_cache_path = cl.opts["-cache"].(string)
     }
@@ -123,7 +137,11 @@ main :: proc() {
         }
     }
     log.debugf("Bakefile Path: '%s'", bake_config.bakefile_path)
-    log.debugf("Bake Cache: '%s'", bake_config.bake_cache_path)
+    if !bake_config.no_cache {
+        log.debugf("Bake Cache: '%s'", bake_config.bake_cache_path)
+    } else {
+        log.debugf("Bake Cache will not be used")
+    }
     bakefile_bytes, bakefile_bytes_err := os.read_entire_file(bake_config.bakefile_path, context.temp_allocator)
     if bakefile_bytes_err != nil {
         log.errorf("Failed to open bakefile: '%s'\n", bake_config.bakefile_path)
