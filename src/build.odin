@@ -1,7 +1,10 @@
 package bake
 
+import "cache"
+import "fs"
+
 import "core:os"
-import "core:fmt"
+import "core:log"
 
 Builtin_Cmd :: struct {
     execute: #type proc([]string) -> int,
@@ -23,8 +26,8 @@ the command is executed.
 */
 Recipe :: struct {
     cmds: []Cmd,
-    inputs: []string,
-    outputs: []string,
+    inputs: []fs.File_Id,
+    outputs: []fs.File_Id,
 }
 
 /*
@@ -46,8 +49,8 @@ The input files for the node are split into two categories:
 Recipe_Node :: struct {
     recipe: Recipe,
     dependencies: [dynamic]^Recipe_Node,
-    leaf_dependencies: [dynamic]string,
-    intr_dependencies: [dynamic]string,
+    leaf_dependencies: [dynamic]fs.File_Id,
+    intr_dependencies: [dynamic]fs.File_Id,
 }
 
 /*
@@ -68,11 +71,11 @@ to be executed at all. If the inputs are unchanged, the outputs will too
 */
 Exec_Task :: struct {
     cmds: []Cmd,
-    inputs: []string,
-    outputs: []string,
+    inputs: []fs.File_Id,
+    outputs: []fs.File_Id,
 }
 
-find_recipe_for_target :: proc(recipes: []Recipe, target: string) -> (Recipe, bool) {
+find_recipe_for_target :: proc(recipes: []Recipe, target: fs.File_Id) -> (Recipe, bool) {
     for r in recipes {
         for output in r.outputs {
             if target == output {
@@ -98,8 +101,8 @@ dep_node_for_recipe :: proc(recipes: []Recipe, recipe: Recipe) -> ^Recipe_Node {
     return dn
 }
 
-dependency_dag_build :: proc(recipes: []Recipe, targets: []string) -> Recipe_DAG {
-    printfln_verbose("Building task dependency graph...")
+dependency_dag_build :: proc(recipes: []Recipe, targets: []fs.File_Id) -> Recipe_DAG {
+    log.debugf("Building task dependency graph...")
     dt := Recipe_DAG {
         roots = make([dynamic]^Recipe_Node),
     }
@@ -114,7 +117,7 @@ dependency_dag_build :: proc(recipes: []Recipe, targets: []string) -> Recipe_DAG
 }
 
 dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []^Recipe_Node {
-    printfln_verbose("Sorting dependency graph...")
+    log.debugf("Sorting dependency graph...")
     dep_tree_walk :: proc(arr: ^[dynamic]^Recipe_Node, dn: ^Recipe_Node) {
         for node in dn.dependencies {
             dep_tree_walk(arr, node)
@@ -128,94 +131,149 @@ dependency_dag_toposort :: proc(dt: Recipe_DAG) -> []^Recipe_Node {
     return nodes[:]
 }
 
-build_execution_plan :: proc(cache: ^Cache, recipes: []Recipe, targets: []string) -> []Exec_Task {
+build_execution_plan :: proc(
+    f: ^fs.Fs,
+    c: ^cache.Cache,
+    recipes: []Recipe,
+    targets: []fs.File_Id,
+) -> []Exec_Task {
     dag := dependency_dag_build(recipes, targets)
     sorted_nodes := dependency_dag_toposort(dag)
-    printfln_verbose("Building execution plan...")
+    log.debugf("Building execution plan...")
     plan := make([dynamic]Exec_Task)
     for node, i in sorted_nodes {
-        printfln_verbose("Considering graph node: %v", node.recipe.cmds)
+        log.debugf("Considering graph node: %v", node.recipe.cmds)
         inputs_changed := false
-        printfln_verbose("-> Checking recipe inputs...")
+        log.debugf("-> Checking recipe inputs...")
         for dependency in node.recipe.inputs {
-            status := cache_check(cache, dependency)
+            dependency_info := fs.get_info_by_id(f, dependency)
+            status := cache.cache_check(c, dependency_info.path)
             if status != .Unchanged {
                 inputs_changed = true
             }
         }
         if inputs_changed {
-            printfln_verbose("* Input(s) changed.")
+            log.debugf("* Input(s) changed.")
         } else {
-            printfln_verbose("* Input(s) are unchanged.")
+            log.debugf("* Input(s) are unchanged.")
         }
         outputs_changed := false
         if inputs_changed {
-            printfln_verbose("-> Invalidating outputs.")
+            log.debugf("-> Invalidating outputs.")
             for output in node.recipe.outputs {
-                cache_invalidate(cache, output)
+                output_info := fs.get_info_by_id(f, output)
+                cache.cache_invalidate(c, output_info.path)
             }
         } else {
-            printfln_verbose("-> Checking recipe outputs...")
+            log.debugf("-> Checking recipe outputs...")
             for output in node.recipe.outputs {
-                status := cache_check(cache, output)
+                output_info := fs.get_info_by_id(f, output)
+                status := cache.cache_check(c, output_info.path)
                 if status == .Updated {
-                    fmt.printfln("[WARNING]: Output %s unexpectedly changed since last rebuild. Rebuilding.", output)
+                    log.warnf("Output %s unexpectedly changed since last rebuild. Rebuilding.", output_info.path)
                 }
                 if status != .Unchanged {
                     outputs_changed = true
                 }
             }
             if outputs_changed {
-                printfln_verbose("* Output(s) changed.")
+                log.debugf("* Output(s) changed.")
             } else {
-                printfln_verbose("* Output(s) are unchanged.")
+                log.debugf("* Output(s) are unchanged.")
             }
         }
         if inputs_changed || outputs_changed {
-            printfln_verbose("* This recipe will be executed.")
+            log.debugf("* This recipe will be executed.")
             append(&plan, Exec_Task {
                 cmds = node.recipe.cmds,
                 inputs = node.recipe.inputs,
                 outputs = node.recipe.outputs,
             })
         } else {
-            printfln_verbose("* Cached!")
+            log.debugf("* Cached!")
         }
     }
     return plan[:]
 }
 
-execute_plan :: proc(cache: ^Cache, plan: []Exec_Task) {
+build_execution_plan_no_cache :: proc(
+    f: ^fs.Fs,
+    recipes: []Recipe,
+    targets: []fs.File_Id,
+) -> []Exec_Task {
+    dag := dependency_dag_build(recipes, targets)
+    sorted_nodes := dependency_dag_toposort(dag)
+    log.debugf("Building execution plan...")
+    log.debugf("* Not using cache")
+    plan := make([dynamic]Exec_Task)
+    for node in sorted_nodes {
+        log.debugf("* Adding node: %v", node.recipe.cmds)
+        append(&plan, Exec_Task {
+            cmds = node.recipe.cmds,
+            inputs = node.recipe.inputs,
+            outputs = node.recipe.outputs,
+        })
+    }
+    return plan[:]
+}
+
+execute_plan :: proc(f: ^fs.Fs, c: ^cache.Cache, plan: []Exec_Task) {
     had_errors := false
     for task, idx in plan {
         for cmd in task.cmds {
             code, err := run_cmd(cmd)
             if err != nil {
-                fmt.eprintf("Failed to run command: %v\n", cmd)
+                log.errorf("Failed to run command: %v\n", cmd)
                 if err == .Executable_Not_Found {
-                    fmt.eprintf("  Specified executable not found.\n")
+                    log.errorf("  Specified executable not found.\n")
                 }
                 os.exit(1)
             }
             if code != 0 {
-                fmt.printf("Command %v failed with error code: %d\n", cmd, code)
+                log.errorf("Command %v failed with error code: %d\n", cmd, code)
                 had_errors := true
                 break
             }
         }
         for output in task.outputs {
-            cache_update(cache, output)
+            output_info := fs.get_info_by_id(f, output)
+            cache.cache_update(c, output_info.path)
         }
         for input in task.inputs {
-            cache_update(cache, input)
+            input_info := fs.get_info_by_id(f, input)
+            cache.cache_update(c, input_info.path)
         }
     }
-    fs_cache_write(cache)
+    cache.fs_cache_write(c)
 }
 
-build :: proc(recipes: []Recipe, targets: []string) {
-    cache := fs_cache_open()
-    plan := build_execution_plan(&cache, recipes, targets)
-    execute_plan(&cache, plan)
+execute_plan_no_cache :: proc(f: ^fs.Fs, plan: []Exec_Task) {
+    for task, idx in plan {
+        for cmd in task.cmds {
+            code, err := run_cmd(cmd)
+            if err != nil {
+                log.errorf("Failed to run command: %v\n", cmd)
+                if err == .Executable_Not_Found {
+                    log.errorf("  Specified executable not found.\n")
+                }
+                os.exit(1)
+            }
+            if code != 0 {
+                log.errorf("Command %v failed with error code: %d\n", cmd, code)
+                break
+            }
+        }
+    }
+}
+
+build :: proc(f: ^fs.Fs, recipes: []Recipe, targets: []fs.File_Id) {
+    cache := cache.fs_cache_open(bake_config.bake_cache_path)
+    if !bake_config.no_cache {
+        plan := build_execution_plan(f, &cache, recipes, targets)
+        execute_plan(f, &cache, plan)
+    } else {
+        plan := build_execution_plan_no_cache(f, recipes, targets)
+        execute_plan_no_cache(f, plan)
+    }
 }
 

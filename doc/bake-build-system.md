@@ -132,7 +132,7 @@ Step by step on a clean directory:
 3. On a second invocation of bake, both calls find everything unchanged and run
    nothing.
 
-## Building the dependency graph (actual behavior)
+## Building the dependency graph
 
 For each target, in the order given:
 
@@ -150,38 +150,6 @@ A recipe is always emitted after its dependencies, so a dependency executes
 first. Across independent branches, order follows the target order and the order
 of inputs inside each recipe. It is not a stable global topological order.
 
-### No deduplication
-
-A recipe reachable through several paths is emitted -- and executed -- once per
-path. Graph nodes are separate copies, even when they represent the same recipe.
-
-Walkthrough. Consider four recipes: `common.txt` from `gen.txt`, `a.txt` from
-`common.txt`, `b.txt` from `common.txt`, and `out.txt` from `a.txt` and
-`b.txt`. Requesting `out.txt` proceeds as follows:
-
-1. `out.txt`'s recipe has inputs `a.txt` and `b.txt`.
-2. `a.txt` is produced by a recipe whose input is `common.txt`.
-3. `common.txt` is produced by a recipe whose input is `gen.txt` (a leaf).
-4. Emit `common.txt`'s recipe, then `a.txt`'s recipe.
-5. `b.txt` is also produced from `common.txt`. The walk descends into
-   `common.txt`'s recipe a second time, emitting another copy, then emits
-   `b.txt`'s recipe.
-6. Emit `out.txt`'s recipe.
-
-The resulting plan is `common, a, common, b, out`, and the common recipe runs
-twice. The observed command sequence was:
-
-```
-RUN COMMAND: ["cmd", "/c", "type gen.txt > common.txt"]
-RUN COMMAND: ["cmd", "/c", "type common.txt > a.txt"]
-RUN COMMAND: ["cmd", "/c", "type gen.txt > common.txt"]
-RUN COMMAND: ["cmd", "/c", "type common.txt > b.txt"]
-RUN COMMAND: ["cmd", "/c", "type a.txt > out.txt", "&", "type b.txt >> out.txt"]
-```
-
-Requesting the same target twice, `bake-build(['out.txt', 'out.txt'])`, likewise
-plans and executes its whole subtree twice.
-
 ### Cycles are not detected
 
 If a recipe's input is produced by a recipe that directly or indirectly consumes
@@ -189,7 +157,7 @@ its output, the recursive walk never terminates. Bake crashes with a stack
 overflow (exit code `0xC00000FD` on Windows) without a diagnostic. Keep the graph
 acyclic.
 
-## Deciding what to rebuild (actual algorithm)
+## Deciding what to rebuild
 
 After the graph is sorted, bake builds the complete execution plan **before
 running anything**. For each node in plan order:
@@ -206,85 +174,40 @@ running anything**. For each node in plan order:
 4. Record the decision and continue with the next node.
 
 A node's decision is made from the cache as it was at the start of the
-`bake-build` call. Rebuilding a dependency during the same run does **not** mark
-its consumers dirty; see
-[why a change sometimes stops after one step](#why-a-change-sometimes-stops-after-one-step).
+`bake-build` call.
 
-### File statuses
+### Caching behavior
 
-The cache stores one record per file. A record contains the file's identity
-(NTFS file index and volume serial number) and its last-write time.
+The cache stores one record per file. A record contains the file's mtime
+(modification time), it's size and the content hash. Checking whether any of the
+inputs were changed involves first checking the `(mtime, size)` of the file and
+if the pair is unchanged, the file is considered unchanged. Otherwise the hash
+is recomputed and checked against the cached version.
+
+> [!WARNING] Tools lying about time
+>
+> Some tools (for example 7z) might change the file's mtime after extraction,
+> causing the file to have mtime that is earlier than the time of the last
+> change. If such tools are used, there is a possibilty that the file contents
+> change without updating the `(mtime, size)` pair, causing the stale cache.
+>
+> It is advised to be aware of these tools and either delete the cache file in
+> order to free it from staleness, or use alternative tools.
 
 `cache_check` works like this:
 
 1. Open the file. If it cannot be opened, the status is `Not_Exist`.
 2. Find the record whose identity matches the file.
-3. If the current last-write time is strictly greater than the record's time,
-   the status is `Updated`.
-4. Otherwise the status is `Unchanged` -- equal or older timestamps count as
-   unchanged.
+3. If the file's mtime or the size differs from the cached record, then the
+   file status is `Updated`.
+4. Otherwise the file's contents are hashed. If the hash differs, the file status
+   is `Updated`.
+5. Otherwise the status is `Unchanged`.
 
-When a file exists but has no cache record, the comparison is made against an
-uninitialized record: the "record found" flag is computed but never consulted.
-The result is formally undefined; in the current build it behaves as `Updated`,
-so a file bake has never seen triggers a rebuild. Treat this corner as an
-implementation detail that will be fixed.
-
-Because only the write time is compared:
-
-* content hashing is not used;
-* overwriting a file and giving it an older or equal timestamp is invisible
-  (the status stays `Unchanged`);
-* touching a file with a newer timestamp is visible (`Updated`).
-
-Records are matched by file identity, which makes renaming a file invisible to
-the cache: the identity survives the rename, so the new path still matches the
-old record. Deleting and recreating a file normally creates a new identity (and
-therefore no record, which triggers a rebuild), but NTFS can reuse file indices,
-in which case a recreated file may match an old record.
-
-### Why a change sometimes stops after one step
-
-Consider the chain `mid.txt` from `gen.txt`, and `final.txt` from `mid.txt`. The
-first run builds both. Then `gen.txt` is modified and bake runs again:
-
-1. Planning: `gen.txt` is `Updated`, so the `mid.txt` recipe is scheduled.
-2. Planning: `mid.txt` is still `Unchanged` (nothing has run yet), and
-   `final.txt` is `Unchanged`, so the `final.txt` recipe is marked `Cached!`.
-3. Execution: only the `mid.txt` recipe runs. `mid.txt` receives the new
-   content; `final.txt` keeps the old content.
-
-The next run:
-
-1. `gen.txt` is now `Unchanged` (its record was refreshed during the previous
-   run).
-2. `mid.txt` is `Unchanged` (its record was refreshed when it was rebuilt).
-3. `final.txt` is `Unchanged`, so everything is cached and `final.txt` stays
-   stale indefinitely.
-
-The observed trace after modifying `gen.txt` was:
-
-```
-* File 'gen.txt' status: Updated
-* This recipe will be executed.
-* File 'mid.txt' status: Unchanged
-* File 'final.txt' status: Unchanged
-* Cached!
-RUN COMMAND: ["cmd", "/c", "type gen.txt > mid.txt"]
-```
-
-After that run, `mid.txt` contained the new value and `final.txt` still
-contained the old one. Later runs reported everything as `Unchanged`.
-
-This is also why a clean checkout builds everything: every output is `Not_Exist`,
-so every recipe is scheduled.
-
-Two workarounds:
-
-* Make each recipe list all of its transitive inputs directly. For example, make
-  the link step list the source files as well as the object files. Then a source
-  change makes every affected recipe dirty at planning time.
-* Delete the downstream outputs before building.
+The implications of this are the following: Unless tools lie about file's mtime,
+doing a `touch` of the file should not trigger a re-build, because even if the
+mtime has changed, the file contents have not due to a source hash check - it's
+still the same file.
 
 ### Missing files
 
@@ -299,52 +222,29 @@ Two workarounds:
 
 ## The cache file
 
-### Intended behavior
-
-The cache is meant to be stored in the file selected by `-cache:<path>`,
-defaulting to `./.bake-cache`.
-
-### Current implementation
-
-`-cache:` is parsed but never used. Reading and writing both use a file named
-after the *selected target function* -- by default a file named `build`, and a
-file named after the target for any other target -- in the process working
-directory. Running any bakefile that calls `bake-build` therefore leaves or
-overwrites such a binary file wherever bake was started, and `.bake-cache` is
-unused. This is a bug, not a feature; the rest of this section calls it "the
-cache file" without relying on its name.
+Bake keeps the cache in a file called `.bake-cache` in the working directory.
+The location of this file can be changed by `-cache:<path>` command-line option.
 
 ### Format
 
-The cache file is a raw binary array of 24-byte records: an 8-byte file index, a
-4-byte volume serial number (followed by 4 bytes of padding), and an 8-byte
-last-write time. There is no header, version, or checksum. On open, the byte
-length is reinterpreted as an array of records, dropping any trailing partial
-record. On write, the records are written back verbatim. The file is not
-human-readable and must not be edited by hand.
+The cache file is a binary file, that has a magic number (string `'bake'` in
+ASCII), version information, header information and an array of file information
+records.
 
 ### Lifecycle
 
-* Opened once at the start of every `bake-build` call, so an earlier call's
-  writes are visible to a later call.
-* If the file is missing or unreadable, the cache starts empty.
-* Updated after each executed recipe: first the recipe's outputs, then its
-  inputs -- even when a command failed, and even for files that do not exist. A
-  missing file is recorded with a zeroed identity and timestamp; all missing
-  files collapse into one such record, which never matches anything.
-* Written at the end of the call, even when the plan is empty or commands
-  failed.
-* Records are never pruned. Renaming or deleting a file leaves its record
-  behind; deleting a file and creating a new one can leave two records.
-* If writing fails, bake asserts and crashes.
+If the cache file is missing, it is automatically created by `bake`, and treats
+every file as *changed*. This is convenient for doing uncached rebuilds, just
+delete the file and re-run bake.
 
-Consequences worth knowing:
+This file is saved to disk after every `bake-build` call. This includes calls
+within the same `bake` invokation. It stores information necessary to know,
+whether or not any files have changed since last call to `bake-build`.
 
-* Records are per file, not per recipe. The cache cannot express "recipe R
-  consumed file F at version V"; it only knows what each file looked like last
-  time.
-* Because there is no header, pointing bake at an unrelated file produces
-  garbage records and unpredictable statuses.
+Records are never pruned from the cache. When a cached file is deleted,
+information about this file still remains in the cache. This is important, as
+building one module using `bake-build` should not invalidate the cache for
+another module.
 
 ## Executing the plan
 
@@ -495,17 +395,11 @@ report about a command.
 Known shortcomings of the current implementation, beyond the behaviors described
 above:
 
-* **Cache path** -- `-cache:` is ignored; the cache is written to a file named
-  after the selected target function in the working directory.
 * **No deduplication** -- shared dependencies and repeated targets run once per
   path.
 * **No cycle detection** -- a cyclic graph crashes with a stack overflow.
-* **Stale downstream outputs** -- rebuilding a dependency does not dirty its
-  consumers, so a change can stop after one step and stay stale.
 * **Failures do not fail the build** -- execution continues, the exit status is
   0, and failed recipes are cached.
-* **Unrecorded files** -- the status of an existing file with no cache record is
-  compared against an uninitialized record, which is undefined behavior.
 * **Timestamp-only freshness** -- no content hashing; older or equal timestamps
   are invisible.
 * **File identity reuse** -- records are keyed by NTFS file index, which can be

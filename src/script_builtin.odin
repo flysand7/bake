@@ -1,7 +1,10 @@
 package bake
 
+import "fs"
+
 import "core:os"
 import "core:fmt"
+import "core:log"
 
 init_builtins :: proc() {
     builtin_map = {}
@@ -89,8 +92,6 @@ builtin_recipe :: proc(ctx: ^Ctx, args: []Value) -> Value {
         panic("task(,,out): parameter must be an array")
     }
     cmd_arrs := make([dynamic]Cmd)
-    inputs_strs := make([dynamic]string)
-    outputs_strs := make([dynamic]string)
     for arr, idx in cmd.([]Value) {
         if !value_is_arr(arr) {
             panic("task(cmd): Parameter must be an array of arrays")
@@ -101,19 +102,25 @@ builtin_recipe :: proc(ctx: ^Ctx, args: []Value) -> Value {
             cmd_arrs[idx].([]string)[i] = str
         }
     }
+    input_ids := make([dynamic]fs.File_Id, context.allocator)
+    output_ids := make([dynamic]fs.File_Id, context.allocator)
+    workdir, workdir_err := os.get_working_directory(context.allocator)
+    assert(workdir_err == nil)
     for el in inputs.([]Value) {
         str := value_to_str(el)
-        append(&inputs_strs, str)
+        file_id := fs.register_file(ctx.fs, workdir, str, context.allocator)
+        append(&input_ids, file_id)
     }
     for el in outputs.([]Value) {
         str := value_to_str(el)
-        append(&outputs_strs, str)
+        file_id := fs.register_file(ctx.fs, workdir, str, context.allocator)
+        append(&output_ids, file_id)
     }
-    printfln_verbose("ADD BAKE-RECIPE: %s", cmd_arrs)
+    log.debugf("ADD BAKE-RECIPE: %s", cmd_arrs)
     append(&ctx.tasks, Recipe {
         cmds = cmd_arrs[:],
-        inputs = inputs_strs[:],
-        outputs = outputs_strs[:],
+        inputs = input_ids[:],
+        outputs = output_ids[:],
     })
     return nil
 }
@@ -127,12 +134,15 @@ builtin_build :: proc(ctx: ^Ctx, args: []Value) -> Value {
         panic("build(files) takes an array")
     }
     files_arr := files.([]Value)
-    files_strs := make([dynamic]string)
+    file_ids := make([dynamic]fs.File_Id, context.allocator)
+    workdir, workdir_err := os.get_working_directory(context.allocator)
+    assert(workdir_err == nil)
     for v in files_arr {
         str := value_to_str(v)
-        append(&files_strs, str)
+        file_id := fs.register_file(ctx.fs, workdir, str, context.allocator)
+        append(&file_ids, file_id)
     }
-    printfln_verbose("RUN BAKE-BUILD...")
-    build(ctx.tasks[:], files_strs[:])
+    log.debugf("RUN BAKE-BUILD...")
+    build(ctx.fs, ctx.tasks[:], file_ids[:])
     return nil
 }
